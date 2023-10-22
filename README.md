@@ -8,9 +8,9 @@ This GPGPU library uses multiple GPUs to train small-scale neural-networks, fast
 - OpenCL (for GPGPU in CPUs, GPUs and FPGAs)
 - C++17
 
-  ## Algorithm
+## Algorithm
 
-  It works on a simple parallelized simulated annealing algorithm which supports load-balancing between multiple GPUs and CPUs. Every pipeline of GPU runs same neural network but with different input-output data pair. This makes single-pass training for whole data set. But parameters are stored inside in-chip fast memory so the number of parameters can not exceed this small amount (possible as low as 64kB).
+It works on parallelized simulated annealing algorithm which supports load-balancing between multiple GPUs and CPUs. Every pipeline of GPU runs same neural network but with different input-output data pair. This makes single-pass training for whole data set with thousands of simulations in parallel. But parameters are stored on in-chip fast memory so the number of parameters can not exceed this small amount (sometimes as low as 64kB).
 
 ### Hello World
 
