@@ -155,3 +155,78 @@ NVIDIA GeForce RTX 4060 Ti computed 23.94% of total work
  1 or 0  = 1
  1 or 1  = 1
 ```
+---
+
+### Example: Array Sorting
+
+```C++
+#include <iostream>
+#include<algorithm>
+#include <random>
+#include"FastSimpleNeuralNetworkTrainer.h"
+int main()
+{
+    constexpr int numInputs = 3;
+    constexpr int numOutputs = 3;
+    GPGPU::FastSimpleNeuralNetworkTrainer<numInputs, 10, 20, 10, numOutputs> nn;
+    GPGPU::TrainingData<numInputs, numOutputs> td;
+
+
+    std::random_device rd;
+    std::mt19937 rng{ rd() };
+    std::uniform_real_distribution<float> val(0, 1);
+
+
+    // training data for: unsorted array ==> sorted array
+    constexpr int numData = 10000;
+
+    for (int i = 0; i < numData; i++)
+    {
+        std::vector<float> x(numInputs);
+        
+        x[0] = val(rng);
+        x[1] = val(rng);
+        x[2] = val(rng);
+
+        std::vector<float> y = x;
+        std::sort(y.begin(), y.end());
+
+        td.AddInputOutputPair(x, y);
+    }
+
+    // neural network learns how to sort an array    
+    std::vector<float> testInput = { 0.75f, 0.45f, 0.9f };
+    auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput) 
+        {
+            std::cout<<"training: { 0.75f, 0.45f, 0.9f } ==> {"<<testOutput[0]<<","<<testOutput[1]<<","<<testOutput[2]<<"}" << std::endl;
+        });
+
+    auto result = model.Run({ 0.3f, 0.3f, 0.5f });
+    std::cout << " 0.3 0.3 0.5  => " << result[0]<<" "<<result[1]<<" "<<result[2] << std::endl;
+    
+    return 0;
+}
+
+```
+output:
+```
+lower energy found: 4520.95
+training: { 0.75f, 0.45f, 0.9f } ==> {0.456367,0.749462,0.916047}
+lower energy found: 4520.94
+training: { 0.75f, 0.45f, 0.9f } ==> {0.456301,0.749611,0.916149}
+lower energy found: 4520.94
+training: { 0.75f, 0.45f, 0.9f } ==> {0.456391,0.749787,0.916117}
+lower energy found: 4520.86
+training: { 0.75f, 0.45f, 0.9f } ==> {0.456467,0.749952,0.916225}
+lower energy found: 4520.77
+training: { 0.75f, 0.45f, 0.9f } ==> {0.456201,0.749887,0.916184}
+reheating. num reheats left=1
+total computation-time=209.195 seconds (this includes debugging console-output that is slow)
+---------------
+OpenCL device info:
+NVIDIA GeForce RTX 4070 computed 25.04% of total work
+NVIDIA GeForce RTX 4060 Ti computed 23.74% of total work
+---------------
+ 0.3 0.3 0.5  => 0.238977 0.351452 0.445364
+
+```
