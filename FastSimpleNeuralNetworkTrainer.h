@@ -3,6 +3,7 @@
 #include<vector>
 #include<iostream>
 #include<memory>
+#include<functional>
 #include"UfSaCL.h"
 namespace GPGPU
 {
@@ -34,6 +35,20 @@ namespace GPGPU
         {
             constexpr int vec[sizeof...(ARGS)] = { ARGS... };
             return vec[(sizeof...(ARGS)) - 1];
+        }
+
+        template<int ... ARGS>
+        constexpr int ComputeLargestLayerSize()
+        {
+            int result = 0;
+            constexpr int vec[sizeof...(ARGS)] = { ARGS... };
+            
+            for (int i = 0; i < sizeof...(ARGS); i++)
+            {
+                if (result < vec[i])
+                    result = vec[i];
+            }
+            return result;
         }
     }
 
@@ -80,6 +95,59 @@ namespace GPGPU
         std::vector<float> _outputs;
     };
 
+
+    class TrainedModel
+    {
+    private:
+        int _numInputs;
+        int _numOutputs;
+        std::vector<float> _parameters;
+        std::vector<int> _architecture;
+        std::function<std::vector<float>(std::vector<float> inputs)> _run;
+
+    public:
+        TrainedModel() { _numInputs = 0; _numOutputs = 0; }
+        TrainedModel(std::vector<float> parameters, std::vector<int> architecture,
+            std::function<std::vector<float>(std::vector<float> inputs)> run)
+        {
+            _numInputs = architecture[0];
+            _numOutputs = architecture[architecture.size() - 1];
+            _parameters = parameters;
+            _architecture = architecture;
+            _run = run;
+        }
+
+        // inference
+        std::vector<float> Run(std::vector<float> inputs)
+        {
+            if (inputs.size() != _numInputs)
+            {
+                std::cout << "Error: input size is not same as neural architecture" << std::endl;
+                exit(1);
+            }
+            return _run(inputs);
+        }
+
+        // save parameters to use elsewhere
+        std::vector<float> GetParameters()
+        {
+            return _parameters;
+        }
+
+        // to use code directly in GPU kernels with C-style function
+        std::string GetFunctionCodeString()
+        {
+            return "";
+        }
+    };
+
+    /*  GPU - based Trainer Tool For Simple Neural Networks
+        Every GPU has thousands of pipelines
+        Every pipeline runs the same neural architecture but with different data
+        Each inpt-output training data pair flows through a different GPU pipeline        
+        Possible to take millions of training data pairs
+        Parameters are stored in in-chip fast shared-memory(local memory)
+    */ 
     template<int ... ARGS>
     class FastSimpleNeuralNetworkTrainer
     {
@@ -98,11 +166,13 @@ namespace GPGPU
                 )");
                 constantsDefines += std::string("#define NUM_NETWORK_OUTPUTS ") + std::to_string(Util::ComputeSizeOfLastLayer<ARGS...>()) + std::string(R"(
                 )");
+                constantsDefines += std::string("#define NUM_NETWORK_LARGEST_LAYER ") + std::to_string(Util::ComputeLargestLayerSize<ARGS...>()) + std::string(R"(
+                )");
 
 
                 // gpu-accelerated simulated-annealing that launches 1 block per simulation
                 _sim = std::make_shared<UFSACL::UltraFastSimulatedAnnealing<Util::ComputeNumberOfNeuralNetworkParameters<ARGS...>(), 5000>>(
-                    constantsDefines + 
+
                     R"(    
                         const int nData = settings[0];
                         const int nLayers = settings[1];
@@ -132,12 +202,12 @@ namespace GPGPU
                         energy += energyLocal;                
                 )");
 
-                _sim->addFunctionDefinition(R"(  
+                _sim->addFunctionDefinition(constantsDefines+R"(  
                         void Compute(global int * architecture, float * input, float * output, int numLayers, local float * parameters)
                         {
                             int parameterCtr = 0;
-                            float layerVal[256];
-                            float layerValTmp[256];
+                            float layerVal[NUM_NETWORK_LARGEST_LAYER];
+                            float layerValTmp[NUM_NETWORK_LARGEST_LAYER];
                             for(int i=0;i<numLayers;i++)
                             {
                                 if(i==0)
@@ -215,9 +285,19 @@ namespace GPGPU
             }
         }
 
-        void Train(TrainingData<Util::ComputeSizeOfFirstLayer<ARGS...>(), Util::ComputeSizeOfLastLayer<ARGS...>()> trainingData)
+        /*
+            trainingData: input-output data pairs for training
+            testInput: sample input from user to be used in callback that is called whenever a better energy is found by simulated annealing
+            callbackBetterEnergyFound:  this is called whenever solver(simulated annealing) finds a better set of parameters
+                                        returns outputs of neural network with input given by testInput
+        */
+        TrainedModel Train
+        (
+            TrainingData<Util::ComputeSizeOfFirstLayer<ARGS...>(), Util::ComputeSizeOfLastLayer<ARGS...>()> trainingData,
+            std::vector<float> testInput,
+            std::function<void(std::vector<float>)> callbackBetterEnergyFound
+        )
         {
-
             const int nTrainingData = trainingData.Size();
             std::vector<float> trainingDataInput = trainingData.GetInputs();
             std::vector<float> trainingDataOutput = trainingData.GetOutputs();
@@ -239,24 +319,30 @@ namespace GPGPU
             bool debugDevice = false;
             bool debugEnergy = true;
             int numReHeating = 5;
+            int numInputs = Util::ComputeSizeOfFirstLayer<ARGS...>();
+            int numOutputs = Util::ComputeSizeOfLastLayer<ARGS...>();
+            int numLargestLayerSize = Util::ComputeLargestLayerSize<ARGS...>();
+            std::vector<int> architecture = _architecture;
             std::vector<float> prm = _sim->run(
                 startTemperature, stopTemperature, coolingRate, numReHeating,
                 debugPerformance, debugDevice, debugEnergy,
-                [&](float* optimizedParameters) {
-
-                    float input[1] = { 0.5f };
-                    float output[1] = { 0.0f };
+                [numInputs,numOutputs,numLargestLayerSize, 
+                callbackBetterEnergyFound, testInput,architecture]
+                (float* optimizedParameters) 
+                {
+                    std::vector<float> output(numOutputs,0.0f);
+                    
                     float* parameters = optimizedParameters;
                     {
                         int parameterCtr = 0;
-                        float layerVal[256];
-                        float layerValTmp[256];
-                        for (int i = 0; i < _architecture.size(); i++)
+                        std::vector<float> layerVal(numLargestLayerSize);
+                        std::vector<float> layerValTmp(numLargestLayerSize);
+                        for (int i = 0; i < architecture.size(); i++)
                         {
                             if (i == 0)
                             {
                                 // input layer
-                                int n = _architecture[i];
+                                int n = architecture[i];
                                 for (int j = 0; j < n; j++)
                                 {
                                     const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
@@ -265,15 +351,15 @@ namespace GPGPU
                                     const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
 
                                     // neuron output
-                                    layerVal[j] = tanh(mult * input[j] + bias);
+                                    layerVal[j] = tanh(mult * testInput[j] + bias);
                                 }
 
                             }
-                            else if (i == _architecture.size() - 1)
+                            else if (i == architecture.size() - 1)
                             {
                                 // output layer
-                                int n = _architecture[i];
-                                int n0 = _architecture[i - 1];
+                                int n = architecture[i];
+                                int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
                                     const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
@@ -293,8 +379,8 @@ namespace GPGPU
                             else
                             {
                                 // hidden layer
-                                int n = _architecture[i];
-                                int n0 = _architecture[i - 1];
+                                int n = architecture[i];
+                                int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
                                     const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
@@ -313,98 +399,99 @@ namespace GPGPU
 
                                 for (int j = 0; j < n; j++)
                                     layerVal[j] = layerValTmp[j];
-
                             }
                         }
-
-
-                        std::cout << "sqrt (0.5) =" << output[0] << std::endl;
-
-                    }
-                    std::cout << "------" << std::endl;
+                        callbackBetterEnergyFound(output);
+                    }                    
                 }
             );
 
-            for (float inp = 0.15; inp < 0.95; inp += 0.1)
-            {
 
-
-                float input[1] = { inp };
-                float output[1] = { 0.0f };
-                float* parameters = prm.data();
+            TrainedModel model(
+                prm, 
+                architecture, 
+                [numInputs, numOutputs, numLargestLayerSize,
+                callbackBetterEnergyFound, architecture, prm]
+                (std::vector<float> input)
                 {
-                    int parameterCtr = 0;
-                    float layerVal[256];
-                    float layerValTmp[256];
-                    for (int i = 0; i < _architecture.size(); i++)
+                    std::vector<float> output(numOutputs, 0.0f);
+
+                    const float* parameters = prm.data();
                     {
-                        if (i == 0)
+                        int parameterCtr = 0;
+                        std::vector<float> layerVal(numLargestLayerSize);
+                        std::vector<float> layerValTmp(numLargestLayerSize);
+                        for (int i = 0; i < architecture.size(); i++)
                         {
-                            // input layer
-                            int n = _architecture[i];
-                            for (int j = 0; j < n; j++)
+                            if (i == 0)
                             {
-                                const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
-
-                                // neuron input multiplier
-                                const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
-
-                                // neuron output
-                                layerVal[j] = tanh(mult * input[j] + bias);
-                            }
-
-                        }
-                        else if (i == _architecture.size() - 1)
-                        {
-                            // output layer
-                            int n = _architecture[i];
-                            int n0 = _architecture[i - 1];
-                            for (int j = 0; j < n; j++)
-                            {
-                                const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
-                                float acc = 0.0f;
-                                for (int k = 0; k < n0; k++)
+                                // input layer
+                                int n = architecture[i];
+                                for (int j = 0; j < n; j++)
                                 {
+                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+
                                     // neuron input multiplier
                                     const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
 
                                     // neuron output
-                                    acc += mult * layerVal[k];
+                                    layerVal[j] = tanh(mult * input[j] + bias);
                                 }
 
-                                output[j] = tanh(acc + bias);
                             }
-                        }
-                        else
-                        {
-                            // hidden layer
-                            int n = _architecture[i];
-                            int n0 = _architecture[i - 1];
-                            for (int j = 0; j < n; j++)
+                            else if (i == architecture.size() - 1)
                             {
-                                const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
-                                float acc = 0.0f;
-                                for (int k = 0; k < n0; k++)
+                                // output layer
+                                int n = architecture[i];
+                                int n0 = architecture[i - 1];
+                                for (int j = 0; j < n; j++)
                                 {
-                                    // neuron input multiplier
-                                    const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    float acc = 0.0f;
+                                    for (int k = 0; k < n0; k++)
+                                    {
+                                        // neuron input multiplier
+                                        const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
 
-                                    // neuron output
-                                    acc += mult * layerVal[k];
+                                        // neuron output
+                                        acc += mult * layerVal[k];
+                                    }
+
+                                    output[j] = tanh(acc + bias);
+                                }
+                            }
+                            else
+                            {
+                                // hidden layer
+                                int n = architecture[i];
+                                int n0 = architecture[i - 1];
+                                for (int j = 0; j < n; j++)
+                                {
+                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    float acc = 0.0f;
+                                    for (int k = 0; k < n0; k++)
+                                    {
+                                        // neuron input multiplier
+                                        const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
+
+                                        // neuron output
+                                        acc += mult * layerVal[k];
+                                    }
+
+                                    layerValTmp[j] = tanh(acc + bias);
                                 }
 
-                                layerValTmp[j] = tanh(acc + bias);
+                                for (int j = 0; j < n; j++)
+                                    layerVal[j] = layerValTmp[j];
                             }
-
-                            for (int j = 0; j < n; j++)
-                                layerVal[j] = layerValTmp[j];
-
                         }
+                        return output;
                     }
                 }
-                std::cout << "------" << std::endl;
-                std::cout << "sqrt(" << input[0] << ")=" << output[0] << "  error = " << (output[0] - std::sqrt(input[0])) / std::sqrt(input[0]) * 100 << "%" << std::endl;
-            }
+            );
+         
+            return model;
+           
         }
     };
 }
