@@ -2,6 +2,20 @@
 
 This GPGPU library uses multiple GPUs to train small-scale neural-networks, fast and in a simple way.
 
+## Dependencies
+
+- Vcpkg (for OpenCL)
+- OpenCL (for GPGPU in CPUs, GPUs and FPGAs)
+- C++17
+
+  ## Algorithm
+
+  It works on a simple parallelized simulated annealing algorithm which supports load-balancing between multiple GPUs and CPUs. Every pipeline of GPU runs same neural network but with different input-output data pair. This makes single-pass training for whole data set. But parameters are stored inside in-chip fast memory so the number of parameters can not exceed this small amount (possible as low as 64kB).
+
+## Hello World
+
+Following square-root approximation test completes in 8 seconds using two GPUs (~10000 CUDA cores)
+
 ```C++
 #include <iostream>
 #include"FastSimpleNeuralNetworkTrainer.h"
