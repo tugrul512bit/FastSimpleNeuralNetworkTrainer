@@ -129,6 +129,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -139,12 +140,36 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="FastSimpleNeuralNetworkTrainer.cpp" />
+    <ClCompile Include="libGPGPU\benchmark.cpp" />
+    <ClCompile Include="libGPGPU\command-queue.cpp" />
+    <ClCompile Include="libGPGPU\computer.cpp" />
+    <ClCompile Include="libGPGPU\context.cpp" />
+    <ClCompile Include="libGPGPU\device.cpp" />
+    <ClCompile Include="libGPGPU\gpgpu_init.cpp" />
+    <ClCompile Include="libGPGPU\kernel.cpp" />
+    <ClCompile Include="libGPGPU\parameter.cpp" />
+    <ClCompile Include="libGPGPU\platform.cpp" />
+    <ClCompile Include="libGPGPU\task-queue.cpp" />
+    <ClCompile Include="libGPGPU\worker.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FastSimpleNeuralNetworkTrainer.h" />
+    <ClInclude Include="libGPGPU\benchmark.h" />
+    <ClInclude Include="libGPGPU\command-queue.h" />
+    <ClInclude Include="libGPGPU\computer.h" />
+    <ClInclude Include="libGPGPU\context.h" />
+    <ClInclude Include="libGPGPU\device.h" />
+    <ClInclude Include="libGPGPU\gpgpu.hpp" />
+    <ClInclude Include="libGPGPU\gpgpu_init.hpp" />
+    <ClInclude Include="libGPGPU\kernel.h" />
+    <ClInclude Include="libGPGPU\parameter.h" />
+    <ClInclude Include="libGPGPU\platform.h" />
+    <ClInclude Include="libGPGPU\task-queue.h" />
+    <ClInclude Include="libGPGPU\worker.h" />
+    <ClInclude Include="UfSaCL.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
