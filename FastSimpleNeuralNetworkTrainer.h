@@ -9,13 +9,13 @@ namespace GPGPU
 {
     namespace Util
     {
-        template<int ... ARGS>
+        template<int ... NEURAL_NETWORK_ARCHITECTURE>
         constexpr int ComputeNumberOfNeuralNetworkParameters()
         {
             int result = 0;
-            constexpr int vec[sizeof...(ARGS)] = { ARGS... };
+            constexpr int vec[sizeof...(NEURAL_NETWORK_ARCHITECTURE)] = { NEURAL_NETWORK_ARCHITECTURE... };
             int lastWidth = 1;
-            for (int i = 0; i < sizeof...(ARGS); i++)
+            for (int i = 0; i < sizeof...(NEURAL_NETWORK_ARCHITECTURE); i++)
             {
                 result += lastWidth * vec[i] + vec[i];
                 lastWidth = vec[i];
@@ -23,27 +23,27 @@ namespace GPGPU
             return result;
         }
 
-        template<int ... ARGS>
+        template<int ... NEURAL_NETWORK_ARCHITECTURE>
         constexpr int ComputeSizeOfFirstLayer()
         {
-            constexpr int vec[sizeof...(ARGS)] = { ARGS... };
+            constexpr int vec[sizeof...(NEURAL_NETWORK_ARCHITECTURE)] = { NEURAL_NETWORK_ARCHITECTURE... };
             return vec[0];
         }
 
-        template<int ... ARGS>
+        template<int ... NEURAL_NETWORK_ARCHITECTURE>
         constexpr int ComputeSizeOfLastLayer()
         {
-            constexpr int vec[sizeof...(ARGS)] = { ARGS... };
-            return vec[(sizeof...(ARGS)) - 1];
+            constexpr int vec[sizeof...(NEURAL_NETWORK_ARCHITECTURE)] = { NEURAL_NETWORK_ARCHITECTURE... };
+            return vec[(sizeof...(NEURAL_NETWORK_ARCHITECTURE)) - 1];
         }
 
-        template<int ... ARGS>
+        template<int ... NEURAL_NETWORK_ARCHITECTURE>
         constexpr int ComputeLargestLayerSize()
         {
             int result = 0;
-            constexpr int vec[sizeof...(ARGS)] = { ARGS... };
+            constexpr int vec[sizeof...(NEURAL_NETWORK_ARCHITECTURE)] = { NEURAL_NETWORK_ARCHITECTURE... };
             
-            for (int i = 0; i < sizeof...(ARGS); i++)
+            for (int i = 0; i < sizeof...(NEURAL_NETWORK_ARCHITECTURE); i++)
             {
                 if (result < vec[i])
                     result = vec[i];
@@ -148,30 +148,30 @@ namespace GPGPU
         Possible to take millions of training data pairs
         Parameters are stored in in-chip fast shared-memory(local memory)
     */ 
-    template<int ... ARGS>
+    template<int NUM_PARALLEL_SIMULATIONS,int ... NEURAL_NETWORK_ARCHITECTURE>
     class FastSimpleNeuralNetworkTrainer
     {
     private:
         std::vector<int> _architecture;
-        std::shared_ptr<UFSACL::UltraFastSimulatedAnnealing<Util::ComputeNumberOfNeuralNetworkParameters<ARGS...>(), 5000>> _sim;
+        std::shared_ptr<UFSACL::UltraFastSimulatedAnnealing<Util::ComputeNumberOfNeuralNetworkParameters<NEURAL_NETWORK_ARCHITECTURE...>(), NUM_PARALLEL_SIMULATIONS>> _sim;
         bool _built;
     public:
-        FastSimpleNeuralNetworkTrainer()
+        FastSimpleNeuralNetworkTrainer(const int numThreadsPerBlock = 256)
         {
-            _architecture = { ARGS... };
+            _architecture = { NEURAL_NETWORK_ARCHITECTURE... };
             _built = false;
             try
             {
-                std::string constantsDefines = std::string("#define NUM_NETWORK_INPUTS ")+std::to_string(Util::ComputeSizeOfFirstLayer<ARGS...>())+std::string(R"(
+                std::string constantsDefines = std::string("#define NUM_NETWORK_INPUTS ")+std::to_string(Util::ComputeSizeOfFirstLayer<NEURAL_NETWORK_ARCHITECTURE...>())+std::string(R"(
                 )");
-                constantsDefines += std::string("#define NUM_NETWORK_OUTPUTS ") + std::to_string(Util::ComputeSizeOfLastLayer<ARGS...>()) + std::string(R"(
+                constantsDefines += std::string("#define NUM_NETWORK_OUTPUTS ") + std::to_string(Util::ComputeSizeOfLastLayer<NEURAL_NETWORK_ARCHITECTURE...>()) + std::string(R"(
                 )");
-                constantsDefines += std::string("#define NUM_NETWORK_LARGEST_LAYER ") + std::to_string(Util::ComputeLargestLayerSize<ARGS...>()) + std::string(R"(
+                constantsDefines += std::string("#define NUM_NETWORK_LARGEST_LAYER ") + std::to_string(Util::ComputeLargestLayerSize<NEURAL_NETWORK_ARCHITECTURE...>()) + std::string(R"(
                 )");
 
 
                 // gpu-accelerated simulated-annealing that launches 1 block per simulation
-                _sim = std::make_shared<UFSACL::UltraFastSimulatedAnnealing<Util::ComputeNumberOfNeuralNetworkParameters<ARGS...>(), 5000>>(
+                _sim = std::make_shared<UFSACL::UltraFastSimulatedAnnealing<Util::ComputeNumberOfNeuralNetworkParameters<NEURAL_NETWORK_ARCHITECTURE...>(), NUM_PARALLEL_SIMULATIONS>>(
 
                     R"(    
                         const int nData = settings[0];
@@ -200,7 +200,7 @@ namespace GPGPU
                         
                         });
                         energy += energyLocal;                
-                )");
+                )", numThreadsPerBlock);
 
                 _sim->addFunctionDefinition(constantsDefines+R"(  
                         void Compute(global int * architecture, float * input, float * output, int numLayers, local float * parameters)
@@ -293,7 +293,7 @@ namespace GPGPU
         */
         TrainedModel Train
         (
-            TrainingData<Util::ComputeSizeOfFirstLayer<ARGS...>(), Util::ComputeSizeOfLastLayer<ARGS...>()> trainingData,
+            TrainingData<Util::ComputeSizeOfFirstLayer<NEURAL_NETWORK_ARCHITECTURE...>(), Util::ComputeSizeOfLastLayer<NEURAL_NETWORK_ARCHITECTURE...>()> trainingData,
             std::vector<float> testInput,
             std::function<void(std::vector<float>)> callbackBetterEnergyFound,
             float startTemperature = 1.0f,
@@ -320,9 +320,9 @@ namespace GPGPU
                 _sim->build();
             }
            
-            int numInputs = Util::ComputeSizeOfFirstLayer<ARGS...>();
-            int numOutputs = Util::ComputeSizeOfLastLayer<ARGS...>();
-            int numLargestLayerSize = Util::ComputeLargestLayerSize<ARGS...>();
+            int numInputs = Util::ComputeSizeOfFirstLayer<NEURAL_NETWORK_ARCHITECTURE...>();
+            int numOutputs = Util::ComputeSizeOfLastLayer<NEURAL_NETWORK_ARCHITECTURE...>();
+            int numLargestLayerSize = Util::ComputeLargestLayerSize<NEURAL_NETWORK_ARCHITECTURE...>();
             std::vector<int> architecture = _architecture;
             std::vector<float> prm = _sim->run(
                 startTemperature, stopTemperature, coolingRate, numReHeating,
