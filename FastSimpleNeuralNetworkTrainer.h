@@ -4,6 +4,7 @@
 #include<iostream>
 #include<memory>
 #include<functional>
+#include<exception>
 #include"UfSaCL.h"
 namespace GPGPU
 {
@@ -129,6 +130,14 @@ namespace GPGPU
                 exit(1);
             }
             return _run(inputs);
+        }
+
+        // infer on GPU for many different inputs (higher throughput, higher latency)
+        // designed for millions of NPCs running their own brains
+        std::vector<std::vector<float>> RunMultiple(std::vector<std::vector<float>> inputSets)
+        {
+            throw std::logic_error("not implemented");
+            return std::vector<std::vector<float>>();
         }
 
         // save parameters to use elsewhere
@@ -289,11 +298,18 @@ namespace GPGPU
             }
         }
 
+
         /*
+            ---- neural network parameters ----
             trainingData: input-output data pairs for training
             testInput: sample input from user to be used in callback that is called whenever a better energy is found by simulated annealing
             callbackBetterEnergyFound:  this is called whenever solver(simulated annealing) finds a better set of parameters
                                         returns outputs of neural network with input given by testInput
+            ---- simulated annealing parameters ----
+            startTemperature: usually between 1 and 0.1, decides maximum randomness added to parameters
+            stopTemperature: usually close to 0, decides minimum randomness added to parameters
+            coolingRate: how fast temperature goes down. generally between 1.00001f and 2.0f.
+            numReheating: once cooling is completed, result may not be the global one, so it retries while keeping the best parameter set, for this amount of times
         */
         TrainedModel Train
         (
