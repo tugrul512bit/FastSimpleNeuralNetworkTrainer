@@ -295,7 +295,14 @@ namespace GPGPU
         (
             TrainingData<Util::ComputeSizeOfFirstLayer<ARGS...>(), Util::ComputeSizeOfLastLayer<ARGS...>()> trainingData,
             std::vector<float> testInput,
-            std::function<void(std::vector<float>)> callbackBetterEnergyFound
+            std::function<void(std::vector<float>)> callbackBetterEnergyFound,
+            float startTemperature = 1.0f,
+            float stopTemperature = 0.0001f,
+            float coolingRate = 1.1f,
+            int numReHeating = 5,
+            bool debugPerformance = false,
+            bool debugDevice = false,
+            bool debugEnergy = true
         )
         {
             const int nTrainingData = trainingData.Size();
@@ -312,13 +319,7 @@ namespace GPGPU
                 _built = true;
                 _sim->build();
             }
-            float startTemperature = 1.0f;
-            float stopTemperature = 0.0001f;
-            float coolingRate = 1.1f;
-            bool debugPerformance = false;
-            bool debugDevice = false;
-            bool debugEnergy = true;
-            int numReHeating = 5;
+           
             int numInputs = Util::ComputeSizeOfFirstLayer<ARGS...>();
             int numOutputs = Util::ComputeSizeOfLastLayer<ARGS...>();
             int numLargestLayerSize = Util::ComputeLargestLayerSize<ARGS...>();
