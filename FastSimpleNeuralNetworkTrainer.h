@@ -104,17 +104,20 @@ namespace GPGPU
         std::vector<float> _parameters;
         std::vector<int> _architecture;
         std::function<std::vector<float>(std::vector<float> inputs)> _run;
+        std::string _functionCode;
 
     public:
         TrainedModel() { _numInputs = 0; _numOutputs = 0; }
         TrainedModel(std::vector<float> parameters, std::vector<int> architecture,
-            std::function<std::vector<float>(std::vector<float> inputs)> run)
+            std::function<std::vector<float>(std::vector<float> inputs)> run,
+            std::string functionCode)
         {
             _numInputs = architecture[0];
             _numOutputs = architecture[architecture.size() - 1];
             _parameters = parameters;
             _architecture = architecture;
             _run = run;
+            _functionCode = functionCode;
         }
 
         // inference
@@ -137,7 +140,7 @@ namespace GPGPU
         // to use code directly in GPU kernels with C-style function
         std::string GetFunctionCodeString()
         {
-            return "";
+            return _functionCode;
         }
     };
 
@@ -153,6 +156,7 @@ namespace GPGPU
     {
     private:
         std::vector<int> _architecture;
+        std::string constantsDefines;
         std::shared_ptr<UFSACL::UltraFastSimulatedAnnealing<Util::ComputeNumberOfNeuralNetworkParameters<NEURAL_NETWORK_ARCHITECTURE...>(), NUM_PARALLEL_SIMULATIONS>> _sim;
         bool _built;
     public:
@@ -162,7 +166,7 @@ namespace GPGPU
             _built = false;
             try
             {
-                std::string constantsDefines = std::string("#define NUM_NETWORK_INPUTS ")+std::to_string(Util::ComputeSizeOfFirstLayer<NEURAL_NETWORK_ARCHITECTURE...>())+std::string(R"(
+                constantsDefines = std::string("#define NUM_NETWORK_INPUTS ")+std::to_string(Util::ComputeSizeOfFirstLayer<NEURAL_NETWORK_ARCHITECTURE...>())+std::string(R"(
                 )");
                 constantsDefines += std::string("#define NUM_NETWORK_OUTPUTS ") + std::to_string(Util::ComputeSizeOfLastLayer<NEURAL_NETWORK_ARCHITECTURE...>()) + std::string(R"(
                 )");
@@ -488,9 +492,99 @@ namespace GPGPU
                         }
                         return output;
                     }
-                }
+                },
+                    constantsDefines + std::string(R"(  
+                        void Compute(global int * architecture, float * input, float * output, int numLayers, local float * parameters)
+                        {
+                            int parameterCtr = 0;
+                            float layerVal[NUM_NETWORK_LARGEST_LAYER];
+                            float layerValTmp[NUM_NETWORK_LARGEST_LAYER];
+                            for(int i=0;i<numLayers;i++)
+                            {
+                                if(i==0)
+                                {
+                                    // input layer
+                                    int n = architecture[i];
+                                    for(int j=0;j<n;j++)
+                                    {
+                                        const float bias = parameters[parameterCtr++]*2.0f - 1.0f;
+
+                                        // neuron input multiplier
+                                        const float mult = parameters[parameterCtr++]*2.0f - 1.0f;
+
+                                        // neuron output
+                                        layerVal[j] = tanh(mult * input[j] + bias);  
+                                    }                       
+
+                                }
+                                else if(i==numLayers-1)
+                                {
+                                    // output layer
+                                    int n = architecture[i];
+                                    int n0 = architecture[i-1];
+                                    for(int j=0;j<n;j++)
+                                    {
+                                        const float bias = parameters[parameterCtr++]*2.0f - 1.0f;
+                                        float acc = 0.0f;
+                                        for(int k=0;k<n0;k++)
+                                        {
+                                            // neuron input multiplier
+                                            const float mult = parameters[parameterCtr++]*2.0f - 1.0f;
+
+                                            // neuron output
+                                            acc += mult * layerVal[k];  
+                                        }
+
+                                        output[j] = tanh(acc + bias);
+                                    }  
+                                }
+                                else
+                                {
+                                    // hidden layer
+                                    int n = architecture[i];
+                                    int n0 = architecture[i-1];
+                                    for(int j=0;j<n;j++)
+                                    {
+                                        const float bias = parameters[parameterCtr++]*2.0f - 1.0f;
+                                        float acc = 0.0f;
+                                        for(int k=0;k<n0;k++)
+                                        {
+                                            // neuron input multiplier
+                                            const float mult = parameters[parameterCtr++]*2.0f - 1.0f;
+
+                                            // neuron output
+                                            acc += mult * layerVal[k];  
+                                        }
+
+                                        layerValTmp[j] = tanh(acc + bias);
+                                    }        
+
+                                    for(int j=0;j<n;j++)               
+                                        layerVal[j]=layerValTmp[j];
+
+                                }
+                            }
+    
+                        }
+                )")+std::string(R"(
+                    void ComputeNetwork(int inputOutputPairId,int * architecture, int nLayers, float * parameters)
+                    {
+                                int i=inputOutputPairId;
+                                float trainingDataInputTmp[NUM_NETWORK_INPUTS];
+                                float trainingDataOutputTmp[NUM_NETWORK_OUTPUTS];
+
+                                for(int itInp = 0; itInp<NUM_NETWORK_INPUTS; itInp++)
+                                    trainingDataInputTmp[itInp] = trainingDataInput[i*NUM_NETWORK_INPUTS + itInp];
+                                trainingDataOutputTmp[0] = 0.0f;
+                        
+                                Compute(architecture, trainingDataInputTmp, trainingDataOutputTmp, nLayers, parameters);
+                    }
+
+                )")
             );
          
+            
+
             return model;
            
         }
