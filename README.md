@@ -29,44 +29,39 @@ int main()
 
     // neural network learns how to compute y = sqrt(x)
     // more data = better fit, too much data = overfit, less data = generalization, too few data = not learning good
-    nn.Train(td);
+    std::vector<float> testInput = { 0.5f };
+    auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput) 
+        {
+            std::cout<<"training: now square root of "<<testInput[0]<<" is " << testOutput[0] << std::endl;
+        });
 
+    auto result = model.Run({ 0.49 });
+    std::cout << "Square root of 0.49 = " << result[0] << std::endl;
     return 0;
 }
+
 ```
 
 output:
 
 ```
+lower energy found: 104.923
+training: now square root of 0.5 is 0.707106
+reheating. num reheats left=4
+reheating. num reheats left=3
+lower energy found: 104.902
+training: now square root of 0.5 is 0.707107
 reheating. num reheats left=2
 lower energy found: 104.891
-sqrt (0.5) =0.707107
-------
+training: now square root of 0.5 is 0.707107
 lower energy found: 104.855
-sqrt (0.5) =0.707107
-------
+training: now square root of 0.5 is 0.707107
 reheating. num reheats left=1
-total computation-time=8.28626 seconds (this includes debugging console-output that is slow)
+total computation-time=8.48946 seconds (this includes debugging console-output that is slow)
 ---------------
 OpenCL device info:
-NVIDIA GeForce RTX 4070 computed 27.34% of total work
-NVIDIA GeForce RTX 4060 Ti computed 20.56% of total work
+NVIDIA GeForce RTX 4070 computed 27.84% of total work
+NVIDIA GeForce RTX 4060 Ti computed 21.78% of total work
 ---------------
-------
-sqrt(0.15)=0.387022  error = -0.0714089%
-------
-sqrt(0.25)=0.499811  error = -0.0377417%
-------
-sqrt(0.35)=0.591629  error = 0.00362701%
-------
-sqrt(0.45)=0.67082  error = -1.77707e-05%
-------
-sqrt(0.55)=0.74162  error = 1.60742e-05%
-------
-sqrt(0.65)=0.806252  error = 0.00320858%
-------
-sqrt(0.75)=0.865667  error = -0.0413366%
-------
-sqrt(0.85)=0.917586  error = -0.473796%
-
+Square root of 0.49 = 0.7
 ```
