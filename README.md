@@ -1,6 +1,6 @@
 # FastSimpleNeuralNetworkTrainer
 
-This GPGPU library uses multiple GPUs to train small-scale neural-networks, fast and in a simple way.
+This GPGPU library uses multiple GPUs to train small-scale neural-networks with variable number of fully connected layers, fast and in a simple way.
 
 ## Dependencies
 
