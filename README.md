@@ -16,11 +16,11 @@ It works on parallelized simulated annealing algorithm which supports load-balan
 
 ## How To Use?
 
-Class ```GPGPU::FastSimpleNeuralNetworkTrainer``` takes multiple template parameters starting with number of parallel simulations, ending with topology of the neural network to train & infer. To create a neural network with two hidden layers, 1 input, 2 outputs following code is valid: 
+Class ```GPGPU::FastSimpleNeuralNetworkTrainer``` takes multiple template parameters starting with number of parallel simulations, ending with topology of the neural network to train & infer. To create a neural network with two hidden layers(of 10 neurons each), 1 input, 2 outputs following code is valid: 
 
 ```C++
-    // 500 simulations in parallel, each with 1:10:20:10:2 topology & different parameters
-    GPGPU::FastSimpleNeuralNetworkTrainer<500, 1, 10, 20, 10, 2> nn;
+    // 500 simulations in parallel, each with 1:10:10:2 topology & different parameters
+    GPGPU::FastSimpleNeuralNetworkTrainer<500, 1, 10, 10, 2> nn;
 ```
 
 then training data needs to be prepared:
