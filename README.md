@@ -12,7 +12,7 @@ This GPGPU library uses multiple GPUs to train small-scale neural-networks, fast
 
 It works on parallelized simulated annealing algorithm which supports load-balancing between multiple GPUs and CPUs. Every pipeline of GPU runs same neural network but with different input-output data pair. This makes single-pass training for whole data set with thousands of simulations in parallel. But parameters are stored on in-chip fast memory so the number of parameters can not exceed this small amount (sometimes as low as 64kB).
 
-[training](https://github.com/tugrul512bit/FastSimpleNeuralNetworkTrainer/blob/master/neural-network-training.png)
+![training](https://github.com/tugrul512bit/FastSimpleNeuralNetworkTrainer/blob/master/neural-network-training.png)
 
 ### Hello World
 
