@@ -1,6 +1,6 @@
 # FastSimpleNeuralNetworkTrainer
 
-This GPGPU library uses multiple GPUs to train small-scale neural-networks, fast and in a simple way.
+This GPGPU library uses multiple GPUs to train small-scale neural-networks with variable number of fully connected layers, fast and in a simple way.
 
 ## Dependencies
 
@@ -13,6 +13,42 @@ This GPGPU library uses multiple GPUs to train small-scale neural-networks, fast
 It works on parallelized simulated annealing algorithm which supports load-balancing between multiple GPUs and CPUs. Every pipeline of GPU runs same neural network but with different input-output data pair. This makes single-pass training for whole data set with thousands of simulations in parallel. But parameters are stored on in-chip fast memory so the number of parameters can not exceed this small amount (sometimes as low as 64kB).
 
 ![training](https://github.com/tugrul512bit/FastSimpleNeuralNetworkTrainer/blob/master/neural-network-training.png)
+
+## How To Use?
+
+Class ```GPGPU::FastSimpleNeuralNetworkTrainer``` takes multiple template parameters starting with number of parallel simulations, ending with topology of the neural network to train & infer. To create a neural network with two hidden layers(of 10 neurons each), 1 input, 2 outputs following code is valid: 
+
+```C++
+    // 500 simulations in parallel, each with 1:10:10:2 topology & different parameters
+    GPGPU::FastSimpleNeuralNetworkTrainer<500, 1, 10, 10, 2> nn;
+```
+
+then training data needs to be prepared:
+
+```C++
+    // 1 input element, 2 output elements
+    GPGPU::TrainingData<1, 2> td;
+    // x and y are vectors for 1 input element, 2 output elements for network
+    td.AddInputOutputPair(x, y); 
+    td.AddInputOutputPair(x2, y2);
+```
+
+once data is prepared, training can start (it takes a callback function that is called whenever a better solution is found, until simulation ends):
+
+```C++
+    std::vector<float> testInput = { 0.5f };
+    auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput)
+        {
+            std::cout << "training: now square root of " << testInput[0] << " is " << testOutput[0] << std::endl;
+        });
+```
+
+finally, the trained network can start computing test data:
+
+```C++
+    auto result = model.Run({ 0.49 });
+    std::cout << "Square root of 0.49 = " << result[0] << std::endl;
+```
 
 ### Hello World
 
