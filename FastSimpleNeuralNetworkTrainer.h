@@ -322,7 +322,7 @@ namespace GPGPU
                         // from SA space to problem space
                         parallelFor(    NUM_NETWORK_PARAMETERS,
                         {
-                            parameters[loopId] = parameters[loopId]*2.0f - 1.0f;                          
+                            parameters[loopId] = parameters[loopId]*4.0f - 2.0f;                          
                         });
                         barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
 
@@ -361,7 +361,7 @@ namespace GPGPU
                         // from problem space to SA space
                         parallelFor(NUM_NETWORK_PARAMETERS,
                         {
-                            parameters[loopId] = (parameters[loopId]+ 1.0f)*0.5f;
+                            parameters[loopId] = (parameters[loopId]+ 2.0f)*0.25f;
                         });
 
                         energy += energyLocal;                
@@ -482,10 +482,10 @@ namespace GPGPU
                                 int n = architecture[i];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
 
                                     // neuron input multiplier
-                                    const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
 
                                     // neuron output
                                     //layerVal[j] = tanh(mult * testInput[j] + bias);
@@ -501,12 +501,12 @@ namespace GPGPU
                                 int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
                                     float acc = 0.0f;
                                     for (int k = 0; k < n0; k++)
                                     {
                                         // neuron input multiplier
-                                        const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                        const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
 
                                         // neuron output
                                         acc += mult * layerVal[k];
@@ -522,12 +522,12 @@ namespace GPGPU
                                 int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
                                     float acc = 0.0f;
                                     for (int k = 0; k < n0; k++)
                                     {
                                         // neuron input multiplier
-                                        const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                        const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
 
                                         // neuron output
                                         acc += mult * layerVal[k];
@@ -570,10 +570,10 @@ namespace GPGPU
                                 int n = architecture[i];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
 
                                     // neuron input multiplier
-                                    const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
 
                                     // neuron output
                                     //layerVal[j] = tanh(mult * input[j] + bias);
@@ -589,12 +589,12 @@ namespace GPGPU
                                 int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
                                     float acc = 0.0f;
                                     for (int k = 0; k < n0; k++)
                                     {
                                         // neuron input multiplier
-                                        const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                        const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
 
                                         // neuron output
                                         acc += mult * layerVal[k];
@@ -610,12 +610,12 @@ namespace GPGPU
                                 int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
                                     float acc = 0.0f;
                                     for (int k = 0; k < n0; k++)
                                     {
                                         // neuron input multiplier
-                                        const float mult = parameters[parameterCtr++] * 2.0f - 1.0f;
+                                        const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
 
                                         // neuron output
                                         acc += mult * layerVal[k];
