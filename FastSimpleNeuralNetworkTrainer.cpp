@@ -25,14 +25,26 @@ int main()
 
     // neural network learns how to compute y = sqrt(x)
     // more data = better fit, too much data = overfit, less data = generalization, too few data = not learning good
+
     std::vector<float> testInput = { 0.5f };
     auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput)
         {
             std::cout << "training: now square root of " << testInput[0] << " is " << testOutput[0] << std::endl;
         });
 
-    auto result = model.Run({ 0.49 });
-    std::cout << "Square root of 0.49 = " << result[0] << std::endl;
+
+
+    double err = 0.0;
+    int ctr = 0;
+    for (float i = 0.0001f; i < 1.0f; i += 0.0001f)
+    {
+
+        auto result = model.Run({ i });
+        err += std::abs(result[0] - sqrt(i)) / std::abs(sqrt(i));
+        ctr++;
+    }
+
+    std::cout<<ctr<<" samples have " << err / ctr << "% average error. "<< std::endl;
     return 0;
 }
 

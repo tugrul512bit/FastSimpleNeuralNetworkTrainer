@@ -222,7 +222,7 @@ namespace UFSACL
         // any data added with addUserInput method is directly accessed from video-memory that is likely cached by hardware
         // if data with same name exists, it updates the data
         template<typename T>
-        void addUserInput(std::string customInputName, std::vector<T> customInput)
+        void addUserInput(std::string customInputName, std::vector<T> customInput, int numElementsPerThread = 1, bool notForIO = false)
         {
             const int sz = userInputFullAccess.size();
             for (int i = 0; i < sz; i++)
@@ -235,7 +235,15 @@ namespace UFSACL
             }
 
             // fully-copied array (for all GPGPU devices to have all-element random-access in kernel)
-            userInputFullAccess.emplace_back(computer.createArrayInput<T>(customInputName, customInput.size(), 1));
+            if (notForIO)
+            {
+                userInputFullAccess.emplace_back(computer.createArrayState<T>(customInputName, customInput.size(), numElementsPerThread));
+            }
+            else
+            {
+                userInputFullAccess.emplace_back(computer.createArrayInput<T>(customInputName, customInput.size(), numElementsPerThread));
+            }
+
             userInputFullAccess[sz].copyDataFromPtr(customInput.data());
             userInputsWithoutTypes += std::string(", ") + customInputName;
             if (typeid(T) == typeid(char))
