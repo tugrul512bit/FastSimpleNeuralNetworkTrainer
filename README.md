@@ -52,7 +52,7 @@ finally, the trained network can start computing test data:
 
 ### Hello World
 
-Following square-root approximation test completes in 8 seconds using two GPUs (~10000 CUDA cores) with 1 : 10 : 20 : 10 : 1 neural network topology
+Following square-root approximation test completes in ~2 seconds using two GPUs (~10000 CUDA cores) with 1 : 10 : 20 : 10 : 1 neural network topology
 
 ```C++
 #include <iostream>
@@ -82,16 +82,29 @@ int main()
 
     // neural network learns how to compute y = sqrt(x)
     // more data = better fit, too much data = overfit, less data = generalization, too few data = not learning good
+
     std::vector<float> testInput = { 0.5f };
     auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput)
         {
             std::cout << "training: now square root of " << testInput[0] << " is " << testOutput[0] << std::endl;
         });
 
-    auto result = model.Run({ 0.49 });
-    std::cout << "Square root of 0.49 = " << result[0] << std::endl;
+
+
+    double err = 0.0;
+    int ctr = 0;
+    for (float i = 0.0001f; i < 1.0f; i += 0.0001f)
+    {
+
+        auto result = model.Run({ i });
+        err += std::abs(result[0] - sqrt(i)) / std::abs(sqrt(i));
+        ctr++;
+    }
+
+    std::cout<<ctr<<" samples have " << err / ctr << "% average error. "<< std::endl;
     return 0;
 }
+
 
 
 ```
@@ -99,25 +112,24 @@ int main()
 output:
 
 ```
-lower energy found: 104.923
-training: now square root of 0.5 is 0.707106
+training: now square root of 0.5 is 0.707108
+lower energy found: 170.987
+training: now square root of 0.5 is 0.70711
 reheating. num reheats left=4
+lower energy found: 170.981
+training: now square root of 0.5 is 0.707109
 reheating. num reheats left=3
-lower energy found: 104.902
-training: now square root of 0.5 is 0.707107
 reheating. num reheats left=2
-lower energy found: 104.891
-training: now square root of 0.5 is 0.707107
-lower energy found: 104.855
-training: now square root of 0.5 is 0.707107
+lower energy found: 170.813
+training: now square root of 0.5 is 0.70711
 reheating. num reheats left=1
-total computation-time=8.48946 seconds (this includes debugging console-output that is slow)
+total computation-time=1.86096 seconds (this includes debugging console-output that is slow)
 ---------------
 OpenCL device info:
-NVIDIA GeForce RTX 4070 computed 27.84% of total work
-NVIDIA GeForce RTX 4060 Ti computed 21.78% of total work
+NVIDIA GeForce RTX 4070 computed 33.3% of total work
+NVIDIA GeForce RTX 4060 Ti computed 27.3% of total work
 ---------------
-Square root of 0.49 = 0.7
+9999 samples have 0.0560007% average error.
 ```
 
 ---
