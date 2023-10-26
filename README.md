@@ -52,7 +52,7 @@ finally, the trained network can start computing test data:
 
 ### Hello World
 
-Following square-root approximation test completes in ~2 seconds using two GPUs (~10000 CUDA cores) with 1 : 10 : 20 : 10 : 1 neural network topology
+Following square-root approximation test completes in ~5 seconds using two GPUs (~10000 CUDA cores) with 1 : 10 : 20 : 10 : 1 neural network topology
 
 ```C++
 #include <iostream>
@@ -112,24 +112,26 @@ int main()
 output:
 
 ```
-training: now square root of 0.5 is 0.707108
-lower energy found: 170.987
-training: now square root of 0.5 is 0.70711
-reheating. num reheats left=4
-lower energy found: 170.981
-training: now square root of 0.5 is 0.707109
-reheating. num reheats left=3
-reheating. num reheats left=2
-lower energy found: 170.813
-training: now square root of 0.5 is 0.70711
+lower energy found: 141.827
+training: now square root of 0.5 is 0.707311
+lower energy found: 141.826
+training: now square root of 0.5 is 0.707316
+lower energy found: 141.826
+training: now square root of 0.5 is 0.707349
+lower energy found: 141.814
+training: now square root of 0.5 is 0.707343
+lower energy found: 141.808
+training: now square root of 0.5 is 0.707272
+lower energy found: 141.803
+training: now square root of 0.5 is 0.707293
 reheating. num reheats left=1
-total computation-time=1.86096 seconds (this includes debugging console-output that is slow)
+total computation-time=4.76036 seconds (this includes debugging console-output that is slow)
 ---------------
 OpenCL device info:
-NVIDIA GeForce RTX 4070 computed 33.3% of total work
-NVIDIA GeForce RTX 4060 Ti computed 27.3% of total work
+NVIDIA GeForce RTX 4070 computed 33.1% of total work
+NVIDIA GeForce RTX 4060 Ti computed 27.9% of total work
 ---------------
-9999 samples have 0.0560007% average error.
+9999 samples have 0.0523903% average error.
 ```
 
 ---
@@ -189,19 +191,21 @@ int main()
 output:
 
 ```
-lower energy found: 277.04
+lower energy found: 191.707
 training: now 1 or 1 is 1
-lower energy found: 277.035
+lower energy found: 191.705
 training: now 1 or 1 is 1
-lower energy found: 277.035
+lower energy found: 191.643
 training: now 1 or 1 is 1
-lower energy found: 277.028
-training: now 1 or 1 is 1
-total computation-time=7.64115 seconds (this includes debugging console-output that is slow)
+reheating. num reheats left=4
+reheating. num reheats left=3
+reheating. num reheats left=2
+reheating. num reheats left=1
+total computation-time=7.19534 seconds (this includes debugging console-output that is slow)
 ---------------
 OpenCL device info:
-NVIDIA GeForce RTX 4070 computed 26.96% of total work
-NVIDIA GeForce RTX 4060 Ti computed 23.94% of total work
+NVIDIA GeForce RTX 4070 computed 27% of total work
+NVIDIA GeForce RTX 4060 Ti computed 21.84% of total work
 ---------------
  0 or 0  = 0
  0 or 1  = 1
