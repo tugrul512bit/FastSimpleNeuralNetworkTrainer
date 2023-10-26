@@ -160,6 +160,15 @@ namespace GPGPU
         Possible to take millions of training data pairs
         Parameters are stored in in-chip fast shared-memory(local memory)
     */ 
+    /*
+        template parameters
+        NUM_PARALLEL_SIMULATIONS: number of simulated annealing simulations running in parallel on GPUs
+        NEURAL_NETWORK_ARCHITECTURE: number of neurons in layers. nInput,nHidden1,nHidden2,...,nHiddenK,nOutput 
+
+        constructor parameters
+        numThreadsPerBlock: number of gpu threads per simulated annealing simulation (256 default)
+        parameterScaling: range of parameters of neural network (2.0f default ==> [-2, +2] range for all parameters)
+    */
     template<int NUM_PARALLEL_SIMULATIONS,int ... NEURAL_NETWORK_ARCHITECTURE>
     class FastSimpleNeuralNetworkTrainer
     {
@@ -169,12 +178,16 @@ namespace GPGPU
         int _numThreadsPerBlock;
         std::shared_ptr<UFSACL::UltraFastSimulatedAnnealing<Util::ComputeNumberOfNeuralNetworkParameters<NEURAL_NETWORK_ARCHITECTURE...>(), NUM_PARALLEL_SIMULATIONS>> _sim;
         bool _built;
+        float _prmScalingMult;
+        float _prmScalingAdd;
     public:
-        FastSimpleNeuralNetworkTrainer(const int numThreadsPerBlock = 256)
+        FastSimpleNeuralNetworkTrainer(const int numThreadsPerBlock = 256, const float parameterScaling = 2.0f)
         {
             _numThreadsPerBlock = numThreadsPerBlock;
             _architecture = { NEURAL_NETWORK_ARCHITECTURE... };
             _built = false;
+            _prmScalingMult = parameterScaling*2;
+            _prmScalingAdd = parameterScaling;
             try
             {
                 _constantsDefines = std::string("#define NUM_NETWORK_INPUTS ")+std::to_string(Util::ComputeSizeOfFirstLayer<NEURAL_NETWORK_ARCHITECTURE...>())+std::string(R"(
@@ -191,6 +204,13 @@ namespace GPGPU
                 )");
                 _constantsDefines += std::string("#define NUM_PARALLEL_SIMULATIONS ") + std::to_string(NUM_PARALLEL_SIMULATIONS) + std::string(R"(
                 )");
+
+                _constantsDefines += std::string("#define PARAMETER_SCALING_MULT ") + std::to_string(2.0f*parameterScaling) + std::string(R"(f
+                )");
+
+                _constantsDefines += std::string("#define PARAMETER_SCALING_ADD ") + std::to_string(parameterScaling) + std::string(R"(f
+                )");
+
                 for (int i = 0; i < _architecture.size(); i++)
                 {
                     _constantsDefines += std::string("#define NUM_LAYER_")+std::to_string(i) + std::string("_NEURON_NUM ") + std::to_string(_architecture[i]) + std::string(R"(
@@ -322,7 +342,7 @@ namespace GPGPU
                         // from SA space to problem space
                         parallelFor(    NUM_NETWORK_PARAMETERS,
                         {
-                            parameters[loopId] = parameters[loopId]*4.0f - 2.0f;                          
+                            parameters[loopId] = parameters[loopId]*PARAMETER_SCALING_MULT - PARAMETER_SCALING_ADD;                          
                         });
                         barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
 
@@ -361,7 +381,7 @@ namespace GPGPU
                         // from problem space to SA space
                         parallelFor(NUM_NETWORK_PARAMETERS,
                         {
-                            parameters[loopId] = (parameters[loopId]+ 2.0f)*0.25f;
+                            parameters[loopId] = (parameters[loopId]+ PARAMETER_SCALING_ADD)/PARAMETER_SCALING_MULT;
                         });
 
                         energy += energyLocal;                
@@ -460,11 +480,13 @@ namespace GPGPU
             int numOutputs = Util::ComputeSizeOfLastLayer<NEURAL_NETWORK_ARCHITECTURE...>();
             int numLargestLayerSize = Util::ComputeLargestLayerSize<NEURAL_NETWORK_ARCHITECTURE...>();
             std::vector<int> architecture = _architecture;
+            float prmScalingAdd = _prmScalingAdd;
+            float prmScalingMult = _prmScalingMult;
             std::vector<float> prm = _sim->run(
                 startTemperature, stopTemperature, coolingRate, numReHeating,
                 debugPerformance, debugDevice, debugEnergy,
                 [numInputs,numOutputs,numLargestLayerSize, 
-                callbackBetterEnergyFound, testInput,architecture]
+                callbackBetterEnergyFound, testInput,architecture, prmScalingMult, prmScalingAdd]
                 (float* optimizedParameters) 
                 {
                     std::vector<float> output(numOutputs,0.0f);
@@ -482,10 +504,10 @@ namespace GPGPU
                                 int n = architecture[i];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                    const float bias = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                     // neuron input multiplier
-                                    const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                    const float mult = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                     // neuron output
                                     //layerVal[j] = tanh(mult * testInput[j] + bias);
@@ -501,12 +523,12 @@ namespace GPGPU
                                 int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                    const float bias = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
                                     float acc = 0.0f;
                                     for (int k = 0; k < n0; k++)
                                     {
                                         // neuron input multiplier
-                                        const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                        const float mult = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                         // neuron output
                                         acc += mult * layerVal[k];
@@ -522,12 +544,12 @@ namespace GPGPU
                                 int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                    const float bias = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
                                     float acc = 0.0f;
                                     for (int k = 0; k < n0; k++)
                                     {
                                         // neuron input multiplier
-                                        const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                        const float mult = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                         // neuron output
                                         acc += mult * layerVal[k];
@@ -547,12 +569,11 @@ namespace GPGPU
                 }
             );
 
-
             TrainedModel model(
                 prm,
                 architecture,
                 [numInputs, numOutputs, numLargestLayerSize,
-                callbackBetterEnergyFound, architecture, prm]
+                callbackBetterEnergyFound, architecture, prm,prmScalingMult, prmScalingAdd]
             (std::vector<float> input)
                 {
                     std::vector<float> output(numOutputs, 0.0f);
@@ -570,10 +591,10 @@ namespace GPGPU
                                 int n = architecture[i];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                    const float bias = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                     // neuron input multiplier
-                                    const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                    const float mult = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                     // neuron output
                                     //layerVal[j] = tanh(mult * input[j] + bias);
@@ -589,12 +610,12 @@ namespace GPGPU
                                 int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                    const float bias = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
                                     float acc = 0.0f;
                                     for (int k = 0; k < n0; k++)
                                     {
                                         // neuron input multiplier
-                                        const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                        const float mult = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                         // neuron output
                                         acc += mult * layerVal[k];
@@ -610,12 +631,12 @@ namespace GPGPU
                                 int n0 = architecture[i - 1];
                                 for (int j = 0; j < n; j++)
                                 {
-                                    const float bias = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                    const float bias = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
                                     float acc = 0.0f;
                                     for (int k = 0; k < n0; k++)
                                     {
                                         // neuron input multiplier
-                                        const float mult = parameters[parameterCtr++] * 4.0f - 2.0f;
+                                        const float mult = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                         // neuron output
                                         acc += mult * layerVal[k];
