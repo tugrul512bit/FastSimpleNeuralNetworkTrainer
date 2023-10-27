@@ -462,7 +462,9 @@ namespace UFSACL
                         // new low-energy point becomes new guess for next iteration
                         for (int i = 0; i < NumParameters; i++)
                         {
-                            parameterIn.access<ParameterType>(i) = currentParameters[i];
+                            // momentum test
+                            //parameterIn.access<ParameterType>(i) = (parameterIn.access<ParameterType>(i) + temp* currentParameters[i])/(temp + 1.0f);
+                            parameterIn.access<ParameterType>(i) =  currentParameters[i];
                         }
 
                         if (energyDebug && foundBestEnergy)

@@ -1,5 +1,5 @@
 #pragma once
-
+#include<cmath>
 #include<vector>
 #include<iostream>
 #include<memory>
@@ -8,6 +8,7 @@
 #include"UfSaCL.h"
 // todo: simulated annealing <---- momentum search 
 // todo2: optional activation functions
+// todo3: unroll kernel loop programmatically
 namespace GPGPU
 {
     namespace Util
@@ -98,13 +99,17 @@ namespace GPGPU
         std::vector<float> _outputs;
     };
 
+    // custom activation function (hidden layers, input layer) to be given to constructor of FastSimpleNeuralNetworkTrainer
+    // by default, it has swish activation function
+    // inKernelCode: the code that will be run inside GPU kernel
+    // inHostCode: the function that will be called in inference & callback inside simulated annealing
     class ActivationFunction
     {
     private:
         std::string _kernelStringForDevice;
         std::function<float(float)> _hostFunction;
     public:
-        ActivationFunction(std::string inKernelCode = "x/(1.0f+exp(-x))", std::function<float(float)> inHostCode = [](float input) { return input / (1.0f + exp(-input)); })
+        ActivationFunction(std::string inKernelCode = "x/(1.0f+exp(-x))", std::function<float(float)> inHostCode = [](float x) { return x/(1.0f + std::exp(-x)); })
         {
             _kernelStringForDevice = inKernelCode;
             _hostFunction = inHostCode;
@@ -194,6 +199,7 @@ namespace GPGPU
         constructor parameters
         numThreadsPerBlock: number of gpu threads per simulated annealing simulation (256 default)
         parameterScaling: range of parameters of neural network (2.0f default ==> [-2, +2] range for all parameters)
+        activation: custom activation function for hidden & input layers. default = swish function
     */
     template<int NUM_PARALLEL_SIMULATIONS,int ... NEURAL_NETWORK_ARCHITECTURE>
     class FastSimpleNeuralNetworkTrainer
@@ -400,7 +406,7 @@ namespace GPGPU
                                 for(int itOutp = 0; itOutp<NUM_NETWORK_OUTPUTS; itOutp++)
                                 {
                                     float diff = (trainingDataOutput[i*NUM_NETWORK_OUTPUTS + itOutp] - trainingDataOutputTmp[itOutp]);
-                                    energy += pow(fabs(diff),0.5f);
+                                    energy += diff * diff; /* pow(fabs(diff),0.5f);*/
                                 }
                         
                         });
