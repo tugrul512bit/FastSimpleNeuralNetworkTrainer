@@ -52,7 +52,7 @@ finally, the trained network can start computing test data:
 
 ### Hello World
 
-Following square-root approximation test completes in ~5 seconds using two GPUs (~10000 CUDA cores) with 1 : 10 : 20 : 10 : 1 neural network topology
+Following square-root approximation test completes in ~2.5 seconds using two GPUs (~10000 CUDA cores) with 1 : 10 : 20 : 10 : 1 neural network topology
 
 ```C++
 #include <iostream>
@@ -62,19 +62,25 @@ int main()
     constexpr int numParallelSimulations = 1000;
     constexpr int numInputs = 1;
     constexpr int numOutputs = 1;
-    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10, 20, 10, numOutputs> nn;
+    const int numThreadsPerSimulation = 256;
+    const float parameterScaling = 1.1f;
+    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10,20,10, numOutputs> nn(numThreadsPerSimulation,parameterScaling);
     GPGPU::TrainingData<numInputs, numOutputs> td;
 
 
 
     // training data for: y = sqrt(x)
-    constexpr int numData = 2500;
+    constexpr int numData = 4000;
     for (int i = 0; i < numData; i++)
     {
         std::vector<float> x(numInputs);
         std::vector<float> y(numOutputs);
 
-        x[0] = i / (float)numData;
+        // x
+        x[0] = i / (float)numData; 
+        // weighting close-to-zero x values more because of floating-point accuracy
+        x[0] *= x[0] * x[0] * x[0];
+        // y
         y[0] = std::sqrt(x[0]);
 
         td.AddInputOutputPair(x, y);
@@ -84,54 +90,56 @@ int main()
     // more data = better fit, too much data = overfit, less data = generalization, too few data = not learning good
 
     std::vector<float> testInput = { 0.5f };
+    float startTemperature = 1.0f;
+    float stopTemperature = 0.000001f;
+    float coolingRate = 2.0f;
+    int numRepeats = 5;
     auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput)
         {
             std::cout << "training: now square root of " << testInput[0] << " is " << testOutput[0] << std::endl;
-        });
+        }, startTemperature, stopTemperature, coolingRate, numRepeats);
 
 
 
-    double err = 0.0;
+    double errPercent = 0.0;
+    double errTotal = 0.0;
     int ctr = 0;
-    for (float i = 0.0001f; i < 1.0f; i += 0.0001f)
+    for (double i = 0.00001; i < 1.0; i += 0.00001)
     {
 
-        auto result = model.Run({ i });
-        err += std::abs(result[0] - sqrt(i)) / std::abs(sqrt(i));
+        auto result = model.Run({ (float)i });
+        errPercent += 100.0 * std::abs(result[0] - sqrt(i)) / std::abs(sqrt(i));
+        errTotal += std::abs(result[0] - sqrt(i));
         ctr++;
     }
 
-    std::cout<<ctr<<" samples have " << err / ctr << "% average error. "<< std::endl;
+    std::cout << ctr << " samples between [0,1] have " << errPercent/ctr << "% average error, "<<errTotal<<" total error." << std::endl;
     return 0;
 }
-
-
-
 ```
 
 output:
 
 ```
-lower energy found: 141.827
-training: now square root of 0.5 is 0.707311
-lower energy found: 141.826
-training: now square root of 0.5 is 0.707316
-lower energy found: 141.826
-training: now square root of 0.5 is 0.707349
-lower energy found: 141.814
-training: now square root of 0.5 is 0.707343
-lower energy found: 141.808
-training: now square root of 0.5 is 0.707272
-lower energy found: 141.803
-training: now square root of 0.5 is 0.707293
-reheating. num reheats left=1
-total computation-time=4.76036 seconds (this includes debugging console-output that is slow)
+lower energy found: 404.237
+training: now square root of 0.5 is 0.707107
+lower energy found: 404.231
+training: now square root of 0.5 is 0.707107
+lower energy found: 404.229
+training: now square root of 0.5 is 0.707107
+lower energy found: 404.226
+training: now square root of 0.5 is 0.707107
+lower energy found: 404.224
+training: now square root of 0.5 is 0.707106
+lower energy found: 404.223
+training: now square root of 0.5 is 0.707106
+total computation-time=2.27395 seconds (this includes debugging console-output that is slow)
 ---------------
 OpenCL device info:
-NVIDIA GeForce RTX 4070 computed 33.1% of total work
-NVIDIA GeForce RTX 4060 Ti computed 27.9% of total work
+NVIDIA GeForce RTX 4070 computed 32.7% of total work
+NVIDIA GeForce RTX 4060 Ti computed 25% of total work
 ---------------
-9999 samples have 0.0523903% average error.
+100000 samples between [0,1] have 1.57069% average error, 577.963 total error.
 ```
 
 ---
