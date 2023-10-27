@@ -155,7 +155,7 @@ NVIDIA GeForce RTX 4060 Ti computed 11.8667% of total work
 
 ---
 
-### Example: Y = X1 or X2 (Topology = 2 : 10 : 20 : 10 : 1)
+### Example: Y = X1 or X2 learned in 7.5 seconds (Topology = 2 : 10 : 20 : 10 : 1)
 
 ```C++
 #include <iostream>
@@ -165,14 +165,15 @@ int main()
     constexpr int numParallelSimulations = 5000;
     constexpr int numInputs = 2;
     constexpr int numOutputs = 1;
-    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10, 20, 10, numOutputs> nn;
+    GPGPU::ActivationFunction act("x*exp(x)", [](float x) {return x * exp(x); });
+    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10, 20, 10, numOutputs> nn(256,1.1f,act);
     GPGPU::TrainingData<numInputs, numOutputs> td;
 
 
 
     // training data for: y = x1 or x2 where 1 means x>=0.5 and 0 means x<0.5
-    constexpr int numDataX = 50;
-    constexpr int numDataY = 50;
+    constexpr int numDataX = 32;
+    constexpr int numDataY = 32;
     for (int i = 0; i < numDataX * numDataY; i++)
     {
         std::vector<float> x(numInputs);
@@ -202,6 +203,33 @@ int main()
     std::cout << " 1 or 0  = " << (result[0] >= 0.5f) << std::endl;
     result = model.Run({ 0.6f, 0.6f });
     std::cout << " 1 or 1  = " << (result[0] >= 0.5f) << std::endl;
+    {
+        constexpr int numDataX = 500;
+        constexpr int numDataY = 500;
+        int err = 0;
+        for (int i = 0; i < numDataX * numDataY; i++)
+        {
+            std::vector<float> x(numInputs);
+            std::vector<float> y(numOutputs);
+
+            x[0] = (i % numDataX) / (float)numDataX;
+            x[1] = (i / numDataX) / (float)numDataY;
+
+            y[0] = x[0] >= 0.5f or x[1] >= 0.5f;
+
+            auto z = model.Run(x);
+            if (std::abs(y[0] - z[0]) > 0.01)
+            {
+                err++;
+                
+            }
+        }
+        if (err > 0)
+        {
+            std::cout << "error: found training error. "<< numDataX * numDataX<<" samples have "<<err<<" errors" << std::endl;
+            
+        }
+    }
     return 0;
 }
 
@@ -210,26 +238,23 @@ int main()
 output:
 
 ```
-lower energy found: 191.707
+lower energy found: 6.75636e-06
 training: now 1 or 1 is 1
-lower energy found: 191.705
+lower energy found: 6.72371e-06
 training: now 1 or 1 is 1
-lower energy found: 191.643
+lower energy found: 6.57961e-06
 training: now 1 or 1 is 1
-reheating. num reheats left=4
-reheating. num reheats left=3
-reheating. num reheats left=2
-reheating. num reheats left=1
-total computation-time=7.19534 seconds (this includes debugging console-output that is slow)
+total computation-time=7.58356 seconds (this includes debugging console-output that is slow)
 ---------------
 OpenCL device info:
-NVIDIA GeForce RTX 4070 computed 27% of total work
-NVIDIA GeForce RTX 4060 Ti computed 21.84% of total work
+NVIDIA GeForce RTX 4070 computed 25.9% of total work
+NVIDIA GeForce RTX 4060 Ti computed 20.96% of total work
 ---------------
  0 or 0  = 0
  0 or 1  = 1
  1 or 0  = 1
  1 or 1  = 1
+error: found training error. 250000 samples have 3907 errors
 ```
 ---
 
