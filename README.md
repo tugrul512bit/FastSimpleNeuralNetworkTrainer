@@ -52,34 +52,43 @@ finally, the trained network can start computing test data:
 
 ### Hello World
 
-Following square-root approximation test completes in ~2.5 seconds using two GPUs (~10000 CUDA cores) with 1 : 10 : 20 : 10 : 1 neural network topology
+Following square-root approximation training completes in ~1.5 seconds using two GPUs (~10000 CUDA cores) with 1 : 10 : 20 : 10 : 1 neural network topology
 
 ```C++
 #include <iostream>
 #include"FastSimpleNeuralNetworkTrainer.h"
 int main()
 {
-    constexpr int numParallelSimulations = 1000;
+    constexpr int numParallelSimulations = 1500;
     constexpr int numInputs = 1;
     constexpr int numOutputs = 1;
     const int numThreadsPerSimulation = 256;
-    const float parameterScaling = 1.1f;
-    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10,20,10, numOutputs> nn(numThreadsPerSimulation,parameterScaling);
-    GPGPU::TrainingData<numInputs, numOutputs> td;
+    const float parameterScaling =1.1f;
+    //const GPGPU::ActivationFunction activation("sin(x)", [](float x) { return sin(x); });
+    //const GPGPU::ActivationFunction activation("tanh(x)", [](float x) { return tanh(x); });
+    //const GPGPU::ActivationFunction activation("x/(1.0f + exp(-x))", [](float x) { return x / (1.0f + exp(-x)); });
+    //const GPGPU::ActivationFunction activation("exp(-x*x)", [](float x) { return exp(-x*x); });
+    //const GPGPU::ActivationFunction activation("4.0f*tanh(x)", [](float x) { return 4.0f*tanh(x); });
+    //const GPGPU::ActivationFunction activation("exp(x)", [](float x) { return exp(x); });
+    const GPGPU::ActivationFunction activation("x*exp(x)", [](float x) { return x*exp(x); });
 
+    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs,10, 20, 10,  numOutputs> nn(
+        numThreadsPerSimulation, parameterScaling, activation
+    );
+    GPGPU::TrainingData<numInputs, numOutputs> td;
+    
 
 
     // training data for: y = sqrt(x)
-    constexpr int numData = 4000;
+    constexpr int numData =256;
     for (int i = 0; i < numData; i++)
     {
         std::vector<float> x(numInputs);
         std::vector<float> y(numOutputs);
 
         // x
-        x[0] = i / (float)numData; 
+        x[0] = i / (float)numData;
         // weighting close-to-zero x values more because of floating-point accuracy
-        x[0] *= x[0] * x[0] * x[0];
         // y
         y[0] = std::sqrt(x[0]);
 
@@ -91,8 +100,8 @@ int main()
 
     std::vector<float> testInput = { 0.5f };
     float startTemperature = 1.0f;
-    float stopTemperature = 0.000001f;
-    float coolingRate = 2.0f;
+    float stopTemperature = 0.0001f;
+    float coolingRate = 1.1f;
     int numRepeats = 5;
     auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput)
         {
@@ -103,17 +112,21 @@ int main()
 
     double errPercent = 0.0;
     double errTotal = 0.0;
+    double errMax = 0.0;
     int ctr = 0;
     for (double i = 0.00001; i < 1.0; i += 0.00001)
     {
 
         auto result = model.Run({ (float)i });
-        errPercent += 100.0 * std::abs(result[0] - sqrt(i)) / std::abs(sqrt(i));
-        errTotal += std::abs(result[0] - sqrt(i));
+        double err = std::abs(result[0] - sqrt(i));
+        errPercent += 100.0 * err / std::abs(sqrt(i));
+        errTotal += err;
+        if (errMax < err)
+            errMax = err;
         ctr++;
     }
 
-    std::cout << ctr << " samples between [0,1] have " << errPercent/ctr << "% average error, "<<errTotal<<" total error." << std::endl;
+    std::cout << ctr << " samples between [0,1] have " << errPercent / ctr << "% average error, " << errTotal << " total error, "<<errMax<<" maximum error." << std::endl;
     return 0;
 }
 ```
@@ -121,25 +134,23 @@ int main()
 output:
 
 ```
-lower energy found: 404.237
-training: now square root of 0.5 is 0.707107
-lower energy found: 404.231
-training: now square root of 0.5 is 0.707107
-lower energy found: 404.229
-training: now square root of 0.5 is 0.707107
-lower energy found: 404.226
-training: now square root of 0.5 is 0.707107
-lower energy found: 404.224
-training: now square root of 0.5 is 0.707106
-lower energy found: 404.223
-training: now square root of 0.5 is 0.707106
-total computation-time=2.27395 seconds (this includes debugging console-output that is slow)
+lower energy found: 0.00489567
+training: now square root of 0.5 is 0.704874
+lower energy found: 0.00489242
+training: now square root of 0.5 is 0.705003
+lower energy found: 0.0048903
+training: now square root of 0.5 is 0.705251
+lower energy found: 0.00488862
+training: now square root of 0.5 is 0.705173
+total computation-time=1.48203 seconds (this includes debugging console-output that is slow)
 ---------------
 OpenCL device info:
-NVIDIA GeForce RTX 4070 computed 32.7% of total work
-NVIDIA GeForce RTX 4060 Ti computed 25% of total work
+NVIDIA GeForce RTX 4070 computed 40.8667% of total work
+NVIDIA GeForce RTX 4060 Ti computed 25.7333% of total work
+NVIDIA GeForce RTX 4070 computed 21.5333% of total work
+NVIDIA GeForce RTX 4060 Ti computed 11.8667% of total work
 ---------------
-100000 samples between [0,1] have 1.57069% average error, 577.963 total error.
+100000 samples between [0,1] have 0.708837% average error, 295.043 total error, 0.0253749 maximum error.
 ```
 
 ---
