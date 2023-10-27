@@ -7,7 +7,9 @@ int main()
     constexpr int numOutputs = 1;
     const int numThreadsPerSimulation = 256;
     const float parameterScaling = 1.1f;
-    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10,20,10, numOutputs> nn(numThreadsPerSimulation,parameterScaling);
+    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10, 20, 10, numOutputs> nn(
+        numThreadsPerSimulation, parameterScaling, GPGPU::ActivationFunction("sqrt(fabs(x))", [](float x) { return std::sqrt(std::abs(x)); })
+    );
     GPGPU::TrainingData<numInputs, numOutputs> td;
 
 
@@ -20,7 +22,7 @@ int main()
         std::vector<float> y(numOutputs);
 
         // x
-        x[0] = i / (float)numData; 
+        x[0] = i / (float)numData;
         // weighting close-to-zero x values more because of floating-point accuracy
         x[0] *= x[0] * x[0] * x[0];
         // y
@@ -56,8 +58,6 @@ int main()
         ctr++;
     }
 
-    std::cout << ctr << " samples between [0,1] have " << errPercent/ctr << "% average error, "<<errTotal<<" total error." << std::endl;
+    std::cout << ctr << " samples between [0,1] have " << errPercent / ctr << "% average error, " << errTotal << " total error." << std::endl;
     return 0;
 }
-
-

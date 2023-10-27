@@ -6,6 +6,8 @@
 #include<functional>
 #include<exception>
 #include"UfSaCL.h"
+// todo: simulated annealing <---- momentum search 
+// todo2: optional activation functions
 namespace GPGPU
 {
     namespace Util
@@ -96,6 +98,28 @@ namespace GPGPU
         std::vector<float> _outputs;
     };
 
+    class ActivationFunction
+    {
+    private:
+        std::string _kernelStringForDevice;
+        std::function<float(float)> _hostFunction;
+    public:
+        ActivationFunction(std::string inKernelCode = "x/(1.0f+exp(-x))", std::function<float(float)> inHostCode = [](float input) { return input / (1.0f + exp(-input)); })
+        {
+            _kernelStringForDevice = inKernelCode;
+            _hostFunction = inHostCode;
+        }
+
+        float operator ()(float input)
+        {
+            return _hostFunction(input);
+        }
+
+        std::string GetKernelString()
+        {
+            return _kernelStringForDevice;
+        }
+    };
 
     class TrainedModel
     {
@@ -106,19 +130,21 @@ namespace GPGPU
         std::vector<int> _architecture;
         std::function<std::vector<float>(std::vector<float> inputs)> _run;
         std::string _functionCode;
+        ActivationFunction _activation;
 
     public:
         TrainedModel() { _numInputs = 0; _numOutputs = 0; }
         TrainedModel(std::vector<float> parameters, std::vector<int> architecture,
             std::function<std::vector<float>(std::vector<float> inputs)> run,
-            std::string functionCode)
+            std::string functionCode,
+            ActivationFunction activationFunction)
         {
             _numInputs = architecture[0];
             _numOutputs = architecture[architecture.size() - 1];
             _parameters = parameters;
             _architecture = architecture;
             _run = run;
-            _functionCode = functionCode;
+            _activation = activationFunction;
         }
 
         // inference
@@ -180,14 +206,17 @@ namespace GPGPU
         bool _built;
         float _prmScalingMult;
         float _prmScalingAdd;
+        ActivationFunction _activation;
     public:
-        FastSimpleNeuralNetworkTrainer(const int numThreadsPerBlock = 256, const float parameterScaling = 2.0f)
+        FastSimpleNeuralNetworkTrainer(
+            const int numThreadsPerBlock = 256, const float parameterScaling = 2.0f, ActivationFunction activation=ActivationFunction())
         {
             _numThreadsPerBlock = numThreadsPerBlock;
             _architecture = { NEURAL_NETWORK_ARCHITECTURE... };
             _built = false;
             _prmScalingMult = parameterScaling*2;
             _prmScalingAdd = parameterScaling;
+            _activation = activation;
             try
             {
                 _constantsDefines = std::string("#define NUM_NETWORK_INPUTS ")+std::to_string(Util::ComputeSizeOfFirstLayer<NEURAL_NETWORK_ARCHITECTURE...>())+std::string(R"(
@@ -242,7 +271,7 @@ namespace GPGPU
                                 // neuron output
                                 //layerVal[j] = tanh(mult * input[j] + bias);
                                 const float x = (mult * input[j] + bias);
-                                layerVal[j] = x/(1.0f+exp(-x));
+                                layerVal[j] = )")+_activation.GetKernelString() + std::string(R"(;
                             }
                       
                             )");
@@ -316,7 +345,7 @@ namespace GPGPU
 
                                 //layerValTmp[j] = tanh(acc + bias);
                                 const float x = (acc + bias);
-                                layerValTmp[j] = x/(1.0f+exp(-x));
+                                layerValTmp[j] = )") + _activation.GetKernelString() + std::string(R"(;
                             }
                             
                             for (int j = 0; j < LOCAL_LOOP_N; j++)
@@ -482,12 +511,13 @@ namespace GPGPU
             std::vector<int> architecture = _architecture;
             float prmScalingAdd = _prmScalingAdd;
             float prmScalingMult = _prmScalingMult;
+            ActivationFunction activation = _activation;
             std::vector<float> prm = _sim->run(
                 startTemperature, stopTemperature, coolingRate, numReHeating,
                 debugPerformance, debugDevice, debugEnergy,
                 [numInputs,numOutputs,numLargestLayerSize, 
-                callbackBetterEnergyFound, testInput,architecture, prmScalingMult, prmScalingAdd]
-                (float* optimizedParameters) 
+                callbackBetterEnergyFound, testInput,architecture, prmScalingMult, prmScalingAdd,activation]
+                (float* optimizedParameters) mutable
                 {
                     std::vector<float> output(numOutputs,0.0f);
                     
@@ -512,7 +542,7 @@ namespace GPGPU
                                     // neuron output
                                     //layerVal[j] = tanh(mult * testInput[j] + bias);
                                     const float x = (mult * testInput[j] + bias);
-                                    layerVal[j] = x / (1.0f + exp(-x));
+                                    layerVal[j] = activation(x);
                                 }
 
                             }
@@ -557,7 +587,7 @@ namespace GPGPU
 
                                     //layerValTmp[j] = tanh(acc + bias);
                                     const float x = (acc + bias);
-                                    layerValTmp[j] = x / (1.0f + exp(-x));
+                                    layerValTmp[j] = activation(x);
                                 }
 
                                 for (int j = 0; j < n; j++)
@@ -568,13 +598,13 @@ namespace GPGPU
                     }                    
                 }
             );
-
+          
             TrainedModel model(
                 prm,
                 architecture,
                 [numInputs, numOutputs, numLargestLayerSize,
-                callbackBetterEnergyFound, architecture, prm,prmScalingMult, prmScalingAdd]
-            (std::vector<float> input)
+                callbackBetterEnergyFound, architecture, prm,prmScalingMult, prmScalingAdd, activation]
+            (std::vector<float> input) mutable
                 {
                     std::vector<float> output(numOutputs, 0.0f);
 
@@ -599,7 +629,7 @@ namespace GPGPU
                                     // neuron output
                                     //layerVal[j] = tanh(mult * input[j] + bias);
                                     const float x = (mult * input[j] + bias);
-                                    layerVal[j] = x / (1.0f + exp(-x));
+                                    layerVal[j] = activation(x);
                                 }
 
                             }
@@ -644,7 +674,7 @@ namespace GPGPU
 
                                     //layerValTmp[j] = tanh(acc + bias);
                                     const float x = (acc + bias);
-                                    layerValTmp[j] = x / (1.0f + exp(-x));
+                                    layerValTmp[j] = activation(x);
                                 }
 
                                 for (int j = 0; j < n; j++)
@@ -654,8 +684,7 @@ namespace GPGPU
                         return output;
                     }
                 },
-                ""
-                    );
+                "",_activation);
          
             
 
