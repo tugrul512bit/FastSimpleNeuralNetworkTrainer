@@ -463,7 +463,7 @@ namespace UFSACL
                         for (int i = 0; i < NumParameters; i++)
                         {
                             // momentum test
-                            //parameterIn.access<ParameterType>(i) = (parameterIn.access<ParameterType>(i) + temp* currentParameters[i])/(temp + 1.0f);
+                            //parameterIn.access<ParameterType>(i) = (parameterIn.access<ParameterType>(i) + temp* currentParameters[i]*22)/(temp*22 + 1.0f);
                             parameterIn.access<ParameterType>(i) =  currentParameters[i];
                         }
 

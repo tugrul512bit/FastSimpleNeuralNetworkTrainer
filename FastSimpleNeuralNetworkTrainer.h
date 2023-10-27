@@ -109,7 +109,7 @@ namespace GPGPU
         std::string _kernelStringForDevice;
         std::function<float(float)> _hostFunction;
     public:
-        ActivationFunction(std::string inKernelCode = "x/(1.0f+exp(-x))", std::function<float(float)> inHostCode = [](float x) { return x/(1.0f + std::exp(-x)); })
+        ActivationFunction(std::string inKernelCode = "x*exp(x)", std::function<float(float)> inHostCode = [](float x) { return x * std::exp(x); })
         {
             _kernelStringForDevice = inKernelCode;
             _hostFunction = inHostCode;
@@ -275,7 +275,6 @@ namespace GPGPU
                                 const float mult = parameters[parameterCtr + j * 2 + 1];
 
                                 // neuron output
-                                //layerVal[j] = tanh(mult * input[j] + bias);
                                 const float x = (mult * input[j] + bias);
                                 layerVal[j] = )")+_activation.GetKernelString() + std::string(R"(;
                             }
@@ -349,7 +348,7 @@ namespace GPGPU
                                     acc += mult * layerVal[k];
                                 }
 
-                                //layerValTmp[j] = tanh(acc + bias);
+  
                                 const float x = (acc + bias);
                                 layerValTmp[j] = )") + _activation.GetKernelString() + std::string(R"(;
                             }
@@ -546,7 +545,7 @@ namespace GPGPU
                                     const float mult = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                     // neuron output
-                                    //layerVal[j] = tanh(mult * testInput[j] + bias);
+
                                     const float x = (mult * testInput[j] + bias);
                                     layerVal[j] = activation(x);
                                 }
@@ -591,7 +590,7 @@ namespace GPGPU
                                         acc += mult * layerVal[k];
                                     }
 
-                                    //layerValTmp[j] = tanh(acc + bias);
+
                                     const float x = (acc + bias);
                                     layerValTmp[j] = activation(x);
                                 }
@@ -633,7 +632,7 @@ namespace GPGPU
                                     const float mult = parameters[parameterCtr++] * prmScalingMult - prmScalingAdd;
 
                                     // neuron output
-                                    //layerVal[j] = tanh(mult * input[j] + bias);
+
                                     const float x = (mult * input[j] + bias);
                                     layerVal[j] = activation(x);
                                 }
@@ -678,7 +677,7 @@ namespace GPGPU
                                         acc += mult * layerVal[k];
                                     }
 
-                                    //layerValTmp[j] = tanh(acc + bias);
+
                                     const float x = (acc + bias);
                                     layerValTmp[j] = activation(x);
                                 }
