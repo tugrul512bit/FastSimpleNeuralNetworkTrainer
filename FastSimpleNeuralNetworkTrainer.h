@@ -265,21 +265,24 @@ namespace GPGPU
                         )";
                             loop += std::string("#define LOCAL_LOOP_N ")+std::to_string(_architecture[i])+std::string(R"( 
                             )");
-                            loop += std::string(R"(
-                            #pragma unroll
-                            for (int j = 0; j < LOCAL_LOOP_N; j++)
+                            for (int j = 0; j < _architecture[i]; j++)
                             {
-                                const float bias = parameters[)")+std::to_string(parameterCtr)+std::string(R"( + j * 2];
+                                loop += std::string(R"(
+                                    // #pragma unroll
+                                    // for (int j = 0; j < LOCAL_LOOP_N; j++)
+                                    {
+                                        const float bias = parameters[)") + std::to_string(parameterCtr + j*2) + std::string(R"(];
 
-                                // neuron input multiplier
-                                const float mult = parameters[parameterCtr + j * 2 + 1];
+                                        // neuron input multiplier
+                                        const float mult = parameters[)") + std::to_string(parameterCtr + j * 2 + 1) + std::string(R"(];
 
-                                // neuron output
-                                const float x = (mult * input[j] + bias);
-                                layerVal[j] = )")+_activation.GetKernelString() + std::string(R"(;
-                            }
+                                        // neuron output
+                                        const float x = (mult * input[)") + std::to_string(j) + std::string(R"(] + bias);
+                                        layerVal[)") + std::to_string(j) + std::string(R"(] = )") + _activation.GetKernelString() + std::string(R"(;
+                                    }
                       
-                            )");
+                                )");
+                            }
                             loop += R"( 
                         #undef LOCAL_LOOP_N
                         #undef LOCAL_LOOP2_N
@@ -293,35 +296,62 @@ namespace GPGPU
                         // output layer
                         loop += R"( { 
                         )";
+
+
                         loop += std::string("#define LOCAL_LOOP_N ") + std::to_string(_architecture[i]) + std::string(R"( 
                             )");
                             loop += std::string("#define LOCAL_LOOP2_N ") + std::to_string(_architecture[i-1]) + std::string(R"( 
                                 )");
-                            loop += std::string(R"(
-                            for (int j = 0; j < LOCAL_LOOP_N; j++)
+                            for (int j = 0; j < _architecture[i]; j++)
                             {
-                                const float bias = parameters[)") + std::to_string(parameterCtr) + std::string(R"( + j * (LOCAL_LOOP2_N + 1)];
+
+                                loop += std::string(R"(
+                            //for (int j = 0; j < LOCAL_LOOP_N; j++)
+                            {
+                                const float bias = parameters[)") + std::to_string(parameterCtr + j * (_architecture[i - 1] + 1)) + std::string(R"(];
                                 float acc = 0.0f;
-                                #pragma unroll
-                                for (int k = 0; k < LOCAL_LOOP2_N; k++)
+                                //#pragma unroll
+                                // for (int k = 0; k < LOCAL_LOOP2_N; k++)
+
+                                )");
+
+                                for(int k=0;k< _architecture[i - 1];k++)
                                 {
+
+                                    loop += R"( { 
+                                    )";
+
                                     // neuron input multiplier
-                                    const float mult = parameters[)") + std::to_string(parameterCtr) + std::string(R"( + j * (LOCAL_LOOP2_N + 1) + k + 1];
+                                    loop += std::string(R"(const float mult = parameters[)") + std::to_string(parameterCtr + j * (_architecture[i - 1] + 1) + k + 1) + std::string(R"(];
+                                    )");
 
                                     // neuron output
-                                    acc += mult * layerVal[k];
-                                }
+                                    loop += std::string(R"(acc += mult * layerVal[)") + std::to_string(k)+std::string(R"(];
+                                    )");
 
-                                output[j] = tanh(acc + bias);
-                            }
+
+                                    loop += R"( }
+                                    )";
+ 
+                                }
+  
+                                loop += std::string(R"(output[)")+std::to_string(j)+std::string(R"(] = tanh(acc + bias);
+                                    }
+                                )");
+                                
                             
-                            )");
+
+                            }
+
+
                         loop += R"( 
                         #undef LOCAL_LOOP_N
                         #undef LOCAL_LOOP2_N
                         } 
                         )";
                         parameterCtr += _architecture[i] * _architecture[i - 1] + _architecture[i];
+
+
                     }
                     else
                     {
@@ -332,27 +362,37 @@ namespace GPGPU
                             )");
                         loop += std::string("#define LOCAL_LOOP2_N ") + std::to_string(_architecture[i - 1]) + std::string(R"( 
                                 )");
+                        for (int j = 0; j < _architecture[i]; j++)
+                        {
                             loop += std::string(R"(
-                            for (int j = 0; j < LOCAL_LOOP_N; j++)
+                            //for (int j = 0; j < LOCAL_LOOP_N; j++)
                             {
-                                const float bias = parameters[)") + std::to_string(parameterCtr) + std::string(R"( + j * (LOCAL_LOOP2_N + 1)];
-                                const int index = )") + std::to_string(parameterCtr) + std::string(R"( + j * (LOCAL_LOOP2_N + 1) + 1;
+                                const float bias = parameters[)") + std::to_string(parameterCtr + j * (_architecture[i - 1] + 1)) + std::string(R"(];
+                                
                                 float acc = 0.0f;
-                                #pragma unroll
-                                for (int k = 0; k < LOCAL_LOOP2_N; k++)
-                                {
-                                    // neuron input multiplier
-                                    const float mult = parameters[index + k];
+                                )");
+
+                            //#pragma unroll
+                            for (int k = 0; k < _architecture[i - 1]; k++)
+                            {
+                                loop += std::string(R"({
+                                )");
+                                // neuron input multiplier
+                                loop += std::string(R"(const float mult = parameters[)") + std::to_string(parameterCtr + j * (_architecture[i - 1] + 1) + 1 + k) + std::string(R"(];
 
                                     // neuron output
-                                    acc += mult * layerVal[k];
-                                }
-
-  
-                                const float x = (acc + bias);
-                                layerValTmp[j] = )") + _activation.GetKernelString() + std::string(R"(;
+                                    acc += mult * layerVal[)") + std::to_string(k) + std::string(R"(];
+                                    )");
+                                loop += std::string(R"(}
+                                )");
                             }
-                            
+
+                            loop += std::string(R"(
+                                const float x = (acc + bias);
+                                layerValTmp[)")+std::to_string(j)+std::string(R"(] = )") + _activation.GetKernelString() + std::string(R"(;
+                            })");
+                        }
+                            loop+=std::string(R"(
                             for (int j = 0; j < LOCAL_LOOP_N; j++)
                                 layerVal[j] = layerValTmp[j];
                                 )");

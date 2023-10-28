@@ -2,7 +2,7 @@
 #include"FastSimpleNeuralNetworkTrainer.h"
 int main()
 {
-    constexpr int numParallelSimulations = 2500;
+    constexpr int numParallelSimulations = 1500;
     constexpr int numInputs = 1;
     constexpr int numOutputs = 1;
     const int numThreadsPerSimulation = 256;
@@ -43,7 +43,7 @@ int main()
 
     std::vector<float> testInput = { 0.5f };
     float startTemperature = 1.0f;
-    float stopTemperature = 0.001f;
+    float stopTemperature = 0.0001f;
     float coolingRate = 1.1f;
     int numRepeats = 5;
     auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput)
@@ -52,23 +52,23 @@ int main()
         }, startTemperature, stopTemperature, coolingRate, numRepeats);
 
 
-    {
-        double errPercent = 0.0;
-        double errTotal = 0.0;
-        double errMax = 0.0;
-        int ctr = 0;
-        for (double i = 0.00001; i < 1.0; i += 0.00001)
-        {
 
-            auto result = model.Run({ (float)i });
-            double err = std::abs(result[0] - sqrt(i));
-            errPercent += 100.0 * err / std::abs(sqrt(i));
-            errTotal += err;
-            if (errMax < err)
-                errMax = err;
-            ctr++;
-        }
-        std::cout << ctr << " samples between [0,1] have " << errPercent / ctr << "% average error, " << errTotal << " total error, " << errMax << " maximum error." << std::endl;
+    double errPercent = 0.0;
+    double errTotal = 0.0;
+    double errMax = 0.0;
+    int ctr = 0;
+    for (double i = 0.00001; i < 1.0; i += 0.00001)
+    {
+
+        auto result = model.Run({ (float)i });
+        double err = std::abs(result[0] - sqrt(i));
+        errPercent += 100.0 * err / std::abs(sqrt(i));
+        errTotal += err;
+        if (errMax < err)
+            errMax = err;
+        ctr++;
     }
+
+    std::cout << ctr << " samples between [0,1] have " << errPercent / ctr << "% average error, " << errTotal << " total error, " << errMax << " maximum error." << std::endl;
     return 0;
 }
