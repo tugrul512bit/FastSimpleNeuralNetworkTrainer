@@ -215,7 +215,7 @@ namespace GPGPU
         ActivationFunction _activation;
     public:
         FastSimpleNeuralNetworkTrainer(
-            const int numThreadsPerBlock = 256, const float parameterScaling = 2.0f, ActivationFunction activation=ActivationFunction())
+            const int numThreadsPerBlock = 256, const float parameterScaling = 1.1f, ActivationFunction activation=ActivationFunction())
         {
             _numThreadsPerBlock = numThreadsPerBlock;
             _architecture = { NEURAL_NETWORK_ARCHITECTURE... };
