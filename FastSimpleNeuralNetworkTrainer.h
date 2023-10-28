@@ -302,16 +302,15 @@ namespace GPGPU
                             )");
                             loop += std::string("#define LOCAL_LOOP2_N ") + std::to_string(_architecture[i-1]) + std::string(R"( 
                                 )");
-                            for (int j = 0; j < _architecture[i]; j++)
+                            //for (int j = 0; j < _architecture[i]; j++)
                             {
 
                                 loop += std::string(R"(
-                            //for (int j = 0; j < LOCAL_LOOP_N; j++)
+                            for (int j = 0; j < LOCAL_LOOP_N; j++)
                             {
-                                const float bias = parameters[)") + std::to_string(parameterCtr + j * (_architecture[i - 1] + 1)) + std::string(R"(];
+                                const float bias = parameters[j * )")+std::to_string(_architecture[i - 1] + 1)+std::string(" + ") + std::to_string(parameterCtr ) + std::string(R"(];
                                 float acc = 0.0f;
-                                //#pragma unroll
-                                // for (int k = 0; k < LOCAL_LOOP2_N; k++)
+
 
                                 )");
 
@@ -322,7 +321,7 @@ namespace GPGPU
                                     )";
 
                                     // neuron input multiplier
-                                    loop += std::string(R"(const float mult = parameters[)") + std::to_string(parameterCtr + j * (_architecture[i - 1] + 1) + k + 1) + std::string(R"(];
+                                    loop += std::string(R"(const float mult = parameters[j * )")+std::to_string(_architecture[i - 1] + 1)+std::string(" + ") + std::to_string(parameterCtr +k + 1) + std::string(R"(];
                                     )");
 
                                     // neuron output
@@ -335,7 +334,7 @@ namespace GPGPU
  
                                 }
   
-                                loop += std::string(R"(output[)")+std::to_string(j)+std::string(R"(] = tanh(acc + bias);
+                                loop += std::string(R"(output[j] = tanh(acc + bias);
                                     }
                                 )");
                                 
@@ -362,12 +361,12 @@ namespace GPGPU
                             )");
                         loop += std::string("#define LOCAL_LOOP2_N ") + std::to_string(_architecture[i - 1]) + std::string(R"( 
                                 )");
-                        for (int j = 0; j < _architecture[i]; j++)
+                        //for (int j = 0; j < _architecture[i]; j++)
                         {
                             loop += std::string(R"(
-                            //for (int j = 0; j < LOCAL_LOOP_N; j++)
+                            for (int j = 0; j < LOCAL_LOOP_N; j++)
                             {
-                                const float bias = parameters[)") + std::to_string(parameterCtr + j * (_architecture[i - 1] + 1)) + std::string(R"(];
+                                const float bias = parameters[j * )")+std::to_string(_architecture[i - 1] + 1) + std::string(" + ")+std::to_string(parameterCtr) + std::string(R"(];
                                 
                                 float acc = 0.0f;
                                 )");
@@ -378,7 +377,7 @@ namespace GPGPU
                                 loop += std::string(R"({
                                 )");
                                 // neuron input multiplier
-                                loop += std::string(R"(const float mult = parameters[)") + std::to_string(parameterCtr + j * (_architecture[i - 1] + 1) + 1 + k) + std::string(R"(];
+                                loop += std::string(R"(const float mult = parameters[j * )")+std::to_string(_architecture[i - 1] + 1)+std::string(" + ") + std::to_string(parameterCtr + 1 + k) + std::string(R"(];
 
                                     // neuron output
                                     acc += mult * layerVal[)") + std::to_string(k) + std::string(R"(];
@@ -389,7 +388,7 @@ namespace GPGPU
 
                             loop += std::string(R"(
                                 const float x = (acc + bias);
-                                layerValTmp[)")+std::to_string(j)+std::string(R"(] = )") + _activation.GetKernelString() + std::string(R"(;
+                                layerValTmp[j] = )") + _activation.GetKernelString() + std::string(R"(;
                             })");
                         }
                             loop+=std::string(R"(
@@ -404,7 +403,7 @@ namespace GPGPU
                             parameterCtr += _architecture[i] * _architecture[i-1] + _architecture[i];
                     }
                 }
-                
+
                 // gpu-accelerated simulated-annealing that launches 1 block per simulation
                 _sim = std::make_shared<UFSACL::UltraFastSimulatedAnnealing<Util::ComputeNumberOfNeuralNetworkParameters<NEURAL_NETWORK_ARCHITECTURE...>(), NUM_PARALLEL_SIMULATIONS>>(
 
