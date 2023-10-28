@@ -258,7 +258,7 @@ error: found training error. 250000 samples have 3907 errors
 ```
 ---
 
-### Example: 3-Element Array Sorting (topology = 3 : 10 : 10 : 10 : 3)
+### Example: 3-Element Array Sorting (topology = 3 : 10 : 20 : 10 : 3)
 
 ```C++
 #include <iostream>
@@ -267,10 +267,11 @@ error: found training error. 250000 samples have 3907 errors
 #include"FastSimpleNeuralNetworkTrainer.h"
 int main()
 {
-    constexpr int numParallelSimulations = 1000;
+    constexpr int numParallelSimulations =500;
     constexpr int numInputs = 3;
     constexpr int numOutputs = 3;
-    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10, 10, 10, numOutputs> nn;
+    const GPGPU::ActivationFunction act("tanh(x)", [](float x) { return tanh(x); });
+    GPGPU::FastSimpleNeuralNetworkTrainer<numParallelSimulations, numInputs, 10, 20, 10, numOutputs> nn(256,1.1f,act);
     GPGPU::TrainingData<numInputs, numOutputs> td;
 
 
@@ -280,7 +281,7 @@ int main()
 
 
     // training data for: unsorted array ==> sorted array
-    constexpr int numData = 50000;
+    constexpr int numData = 4000;
 
     for (int i = 0; i < numData; i++)
     {
@@ -301,57 +302,56 @@ int main()
     auto model = nn.Train(td, testInput, [testInput](std::vector<float> testOutput)
         {
             std::cout << "training: { 0.75f, 0.45f, 0.9f } ==> {" << testOutput[0] << "," << testOutput[1] << "," << testOutput[2] << "}" << std::endl;
-        });
+        },1,0.00001f,1.05f,500);
 
     for (int i = 0; i < 20; i++)
     {
         float v1, v2, v3;
-        auto result = model.Run({ v1=val(rng), v2=val(rng), v3=val(rng) });
-        std::cout<<v1<<" "<<v2<<" "<<v3 << " = > " << result[0] << " " << result[1] << " " << result[2] << std::endl;
+        auto result = model.Run({ v1 = val(rng), v2 = val(rng), v3 = val(rng) });
+        std::cout << v1 << " " << v2 << " " << v3 << " = > " << result[0] << " " << result[1] << " " << result[2] << std::endl;
     }
     return 0;
 }
 
 
+
 ```
 output:
 ```
-lower energy found: 21787.1
-training: { 0.75f, 0.45f, 0.9f } ==> {0.468531,0.742753,0.896765}
-lower energy found: 21787
-training: { 0.75f, 0.45f, 0.9f } ==> {0.468401,0.742808,0.896771}
-lower energy found: 21786.8
-training: { 0.75f, 0.45f, 0.9f } ==> {0.468678,0.742671,0.89682}
-lower energy found: 21786.3
-training: { 0.75f, 0.45f, 0.9f } ==> {0.468513,0.742799,0.896646}
-lower energy found: 21786.1
-training: { 0.75f, 0.45f, 0.9f } ==> {0.468555,0.742762,0.896568}
-lower energy found: 21785.9
-training: { 0.75f, 0.45f, 0.9f } ==> {0.468648,0.742738,0.896601}
-total computation-time=156.615 seconds (this includes debugging console-output that is slow)
+training: { 0.75f, 0.45f, 0.9f } ==> {0.44334,0.764172,0.896679}
+lower energy found: 2.38113
+training: { 0.75f, 0.45f, 0.9f } ==> {0.443298,0.76415,0.896682}
+reheating. num reheats left=1
+lower energy found: 2.38113
+training: { 0.75f, 0.45f, 0.9f } ==> {0.443315,0.764151,0.896683}
+lower energy found: 2.38112
+training: { 0.75f, 0.45f, 0.9f } ==> {0.443317,0.764172,0.896672}
+total computation-time=1123.08 seconds (this includes debugging console-output that is slow)
 ---------------
 OpenCL device info:
-NVIDIA GeForce RTX 4070 computed 25.7% of total work
-NVIDIA GeForce RTX 4060 Ti computed 24.8% of total work
+NVIDIA GeForce RTX 4070 computed 26.2% of total work
+NVIDIA GeForce RTX 4060 Ti computed 22.8% of total work
+NVIDIA GeForce RTX 4070 computed 29.4% of total work
+NVIDIA GeForce RTX 4060 Ti computed 21.6% of total work
 ---------------
-0.199261 0.076507 0.15168 = > 0.0600224 0.138361 0.204892
-0.45549 0.188664 0.496166 = > 0.199949 0.416709 0.500581
-0.967422 0.000415819 0.49834 = > 0.07027 0.523895 0.857152
-0.926756 0.329457 0.2655 = > 0.231931 0.330157 0.876284
-0.919132 0.15296 0.89446 = > 0.145453 0.822045 0.909742
-0.873497 0.433849 0.196184 = > 0.195906 0.448797 0.842662
-0.0115518 0.44483 0.81149 = > 0.0284795 0.500942 0.799638
-0.105706 0.918242 0.140533 = > 0.109146 0.120049 0.866248
-0.358427 0.555395 0.954306 = > 0.373149 0.560527 0.869426
-0.655331 0.401202 0.613121 = > 0.420308 0.585037 0.698692
-0.195866 0.00679714 0.737391 = > 0.0139784 0.175823 0.781814
-0.880138 0.205239 0.595874 = > 0.195103 0.624835 0.844253
-0.919363 0.949601 0.782634 = > 0.734794 0.852594 0.970217
-0.0437144 0.399191 0.896938 = > 0.0698933 0.439391 0.830835
-0.315253 0.608907 0.340029 = > 0.273511 0.394141 0.598521
-0.68282 0.466698 0.875696 = > 0.485868 0.69535 0.86767
-0.624292 0.391674 0.0525485 = > 0.0538038 0.410066 0.631914
-0.447762 0.373671 0.270433 = > 0.261963 0.350505 0.429356
-0.509768 0.480715 0.682073 = > 0.458925 0.553615 0.665736
-0.328889 0.115437 0.16312 = > 0.097182 0.175621 0.279622
+0.0581711 0.0220006 0.347504 = > 0.0141105 0.0670803 0.346016
+0.0576147 0.0856164 0.0753108 = > 0.0212964 0.0836086 0.120738
+0.699539 0.761743 0.32585 = > 0.329718 0.701058 0.75616
+0.644279 0.929641 0.146303 = > 0.13175 0.661939 0.917223
+0.43991 0.503481 0.939782 = > 0.436406 0.490325 0.935676
+0.855676 0.365408 0.30679 = > 0.305092 0.371161 0.869841
+0.928948 0.198322 0.144337 = > 0.135829 0.208741 0.928802
+0.295339 0.467584 0.216512 = > 0.216227 0.298812 0.45997
+0.988677 0.958554 0.206755 = > 0.184551 0.907675 0.973348
+0.956393 0.0890611 0.482762 = > 0.0811025 0.469526 0.953046
+0.766326 0.209337 0.368451 = > 0.220405 0.360087 0.774145
+0.741995 0.111297 0.623226 = > 0.113182 0.629861 0.727476
+0.461 0.722884 0.0677963 = > 0.0647887 0.47715 0.713786
+0.773039 0.464691 0.795905 = > 0.453112 0.751761 0.81975
+0.441087 0.440932 0.0803012 = > 0.0680988 0.417058 0.475103
+0.39298 0.905184 0.489139 = > 0.402733 0.482062 0.916494
+0.221201 0.808543 0.310247 = > 0.223572 0.300826 0.815217
+0.278789 0.311042 0.451181 = > 0.267732 0.338308 0.42525
+0.305794 0.937993 0.220696 = > 0.221226 0.312084 0.94049
+0.43699 0.432962 0.0989809 = > 0.0895862 0.408906 0.467968
 ```
