@@ -169,6 +169,7 @@
     <ClInclude Include="libGPGPU\platform.h" />
     <ClInclude Include="libGPGPU\task-queue.h" />
     <ClInclude Include="libGPGPU\worker.h" />
+    <ClInclude Include="NeuralNetwork.h" />
     <ClInclude Include="UfSaCL.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
