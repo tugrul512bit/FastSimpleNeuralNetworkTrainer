@@ -101,12 +101,12 @@ namespace GPGPU
 			// initialize Mersennes' twister using rd to generate the seed
 			std::mt19937 rng{ rd() };
 
-			std::uniform_real_distribution<float> gen(-1.0f, 1.0f);
+			std::uniform_real_distribution<float> gen(-0.01f, 0.01f);
 			for (int i = 0; i < _paddedNumElementsPerGroupForWeight * _numParallelism; i++)
 			{
 				if (i < _paddedNumElementsPerGroupForWeight)
 				{
-					_weightParallel->access<float>(i) = gen(rng);
+					_weightParallel->access<float>(i) = gen(rng) + 0.5f;
 				}
 				else
 				{
@@ -120,7 +120,7 @@ namespace GPGPU
 			{
 				if (i < _paddedNumElementsPerGroupForBias)
 				{
-					_biasParallel->access<float>(i) = gen(rng);
+					_biasParallel->access<float>(i) = gen(rng) + 0.5f;
 				}
 				else
 				{
@@ -303,9 +303,8 @@ namespace GPGPU
 										int biasIndex = loopId;
 										int weightIndex = loopId;
 										neuronInputValue[offsetGroupBias+biasIndex]=trainingInput[i*numInputs + loopId];
-										neuronOutputValue[offsetGroupBias+biasIndex]=tanh(
-											weight[offsetGroupWeight+weightIndex]*neuronInputValue[offsetGroupBias+biasIndex]+bias[offsetGroupBias+biasIndex]
-										);                                        
+										float val = weight[offsetGroupWeight+weightIndex]*neuronInputValue[offsetGroupBias+biasIndex]+bias[offsetGroupBias+biasIndex];
+										neuronOutputValue[offsetGroupBias+biasIndex]=1.0f/(1.0f + exp(-val));
 									}                                                   
 								}                                                       
 							}
@@ -335,9 +334,8 @@ namespace GPGPU
 											accumulator += neuronOutputValue[offsetGroupBias+biasIndexPrevious]*weight[offsetGroupWeight+weightIndex];
 										}
 										neuronInputValue[offsetGroupBias+biasIndex]=accumulator;
-										neuronOutputValue[offsetGroupBias+biasIndex]=tanh(
-											neuronInputValue[offsetGroupBias+biasIndex]+bias[offsetGroupBias+biasIndex]
-										);																	                               
+										float val = neuronInputValue[offsetGroupBias+biasIndex]+bias[offsetGroupBias+biasIndex];
+										neuronOutputValue[offsetGroupBias+biasIndex]=1.0f/(1.0f + exp(-val));
 										                                        
 									}                                                   
 								}                                                       
@@ -397,14 +395,26 @@ namespace GPGPU
 		}
 
 		// dampening: less than 1 greater than 0
-		void Train(float trainingSpeed, int epochs, bool dampenTrainingSpeed, float dampening = 0.001f, bool profileEpoch = false)
+		void Train(
+			float trainingSpeedMax,
+			float trainingSpeedMin,
+			int epochs,
+			bool dampenTrainingSpeed,
+			float dampening = 0.001f,
+			std::function<void(void)> epochCallback = []() {},
+			int epochsPerCallback = 1,
+			bool profileEpoch = false
+		)
 		{
+			float trainingSpeed = trainingSpeedMax;
 			int weightCtr = 0;
 			int biasCtr = 0;
 			for (int i = 0; i < epochs; i++)
 			{
 				if (dampenTrainingSpeed)
 					trainingSpeed *= (1.0f - dampening);
+				if (trainingSpeed < trainingSpeedMin)
+					trainingSpeed = trainingSpeedMax;
 				_settingsFloat->access<float>(0) = trainingSpeed;
 				const bool weightToUpdate = (i % 2 == 0);
 				if (weightToUpdate)
@@ -426,13 +436,13 @@ namespace GPGPU
 				}
 				if (profileEpoch)
 					std::cout << "epoch: " << t / 1000000000.0f << "s" << std::endl;
-				if (i % 10 == 0)
-				{
-					std::cout <<
-						(int)_neuronErrorValues->access<char>(0) << ": " <<
-						_networkErrorValues->access<float>(0) << "  " <<
-						trainingSpeed << std::endl;
 
+
+				if (i % epochsPerCallback == 0)
+				{
+					epochCallback();
+					std::cout << "error: " << _networkErrorValues->access<float>(0) << "  training speed: " << trainingSpeed << std::endl;
+					std::cout << _weightParallel->access<float>(0) << std::endl;
 					/*
 					for (int i = 0; i < _nWeight; i++)
 						if (_weight->access<float>(i) > 1.0 || _weight->access<float>(i) < -1.0)
@@ -446,6 +456,7 @@ namespace GPGPU
 
 				for (int k = 0; k < _numParallelism; k++)
 				{
+
 					if (k < _nWeight)
 					{
 						if (_neuronErrorValues->access<char>(k * 256) == -1)
@@ -456,6 +467,10 @@ namespace GPGPU
 						{
 							_weightParallel->access<float>(k) += trainingSpeed;
 						}
+						if (_weightParallel->access<float>(k) < 0.0f)
+							_weightParallel->access<float>(k) = 0.0f;
+						if (_weightParallel->access<float>(k) > 1.0f)
+							_weightParallel->access<float>(k) = 1.0f;
 					}
 					else // bias
 					{
@@ -467,6 +482,10 @@ namespace GPGPU
 						{
 							_biasParallel->access<float>(k - _nWeight) += trainingSpeed;
 						}
+						if (_biasParallel->access<float>(k - _nWeight) < 0.0f)
+							_biasParallel->access<float>(k - _nWeight) = 0.0f;
+						if (_biasParallel->access<float>(k - _nWeight) > 1.0f)
+							_biasParallel->access<float>(k - _nWeight) = 0.0f;
 					}
 
 					/*
@@ -530,9 +549,8 @@ namespace GPGPU
 				int biasIndex = neu;
 				int weightIndex = neu;
 				_neuronInputValuesParallel->access<float>(biasIndex) = inputs[neu];
-				_neuronOutputValuesParallel->access<float>(biasIndex) = std::tanh(
-					_weightParallel->access<float>(weightIndex) * _neuronInputValuesParallel->access<float>(biasIndex) + _biasParallel->access<float>(biasIndex)
-				);
+				float val = _weightParallel->access<float>(weightIndex) * _neuronInputValuesParallel->access<float>(biasIndex) + _biasParallel->access<float>(biasIndex);
+				_neuronOutputValuesParallel->access<float>(biasIndex) = 1.0f / (1.0f + std::exp(-val));
 			}
 
 
@@ -555,9 +573,8 @@ namespace GPGPU
 						accumulator += _neuronOutputValuesParallel->access<float>(biasIndexPrevious) * _weightParallel->access<float>(weightIndex);
 					}
 					_neuronInputValuesParallel->access<float>(biasIndex) = accumulator;
-					_neuronOutputValuesParallel->access<float>(biasIndex) = std::tanh(
-						_neuronInputValuesParallel->access<float>(biasIndex) + _biasParallel->access<float>(biasIndex)
-					);
+					float val = _neuronInputValuesParallel->access<float>(biasIndex) + _biasParallel->access<float>(biasIndex);
+					_neuronOutputValuesParallel->access<float>(biasIndex) = 1.0f / (1.0f + std::exp(-val));
 					if (layer == _nLayers - 1)
 					{
 						outputs[neu] = _neuronOutputValuesParallel->access<float>(biasIndex);
