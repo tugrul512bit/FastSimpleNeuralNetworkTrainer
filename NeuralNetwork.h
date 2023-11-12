@@ -1,4 +1,5 @@
 #pragma once
+
 #include"libGPGPU/gpgpu.hpp"
 #include<memory>
 #include<random>
@@ -6,10 +7,15 @@
 
 namespace GPGPU
 {
-	// brute-force gpu-accelerated neural network with simple backpropagation
-	template<int NUM_PARALLELISM>
+	/*
+		brute-force gpu-accelerated neural network
+		NUM_PARALLELISM: number of parameters tuned at once as a global step
+	*/
 	class NeuralNetwork
 	{
+	private:
+		int _paddedNumElementsPerGroupForWeight;
+		int _paddedNumElementsPerGroupForBias;
 	public:
 		NeuralNetwork(
 			// {2,1,1,1,1,3} means 2 inputs, 4 hidden layers with 1 neuron each, 3 outputs
@@ -50,6 +56,11 @@ namespace GPGPU
 			}
 			_nWeight = nTmpW;
 			_nBias = nTmpB;
+			_numParallelism = _nWeight + _nBias;
+			int multipleW = 1 + _nWeight / 256;
+			int multipleB = 1 + _nBias / 256;
+			_paddedNumElementsPerGroupForWeight = multipleW * 256;
+			_paddedNumElementsPerGroupForBias = multipleB * 256;
 			// unified compute device (all gpus,cpus combined)
 			_computer = std::make_shared<GPGPU::Computer>(GPGPU::Computer::DEVICE_ALL);
 
@@ -58,20 +69,20 @@ namespace GPGPU
 			*_settingsFloat = _computer->createArrayInput<float>("settingsFloat", 1000);
 
 			// weights
-			_weight = std::make_shared<GPGPU::HostParameter>();
-			*_weight = _computer->createArrayInput<float>("weight", _nWeight);
-			_weightDelta = std::make_shared<GPGPU::HostParameter>();
-			*_weightDelta = _computer->createArrayInput<float>("weightDelta", _nWeight);
+			_weightParallel = std::make_shared<GPGPU::HostParameter>();
+			*_weightParallel = _computer->createArrayInput<float>("weight", _paddedNumElementsPerGroupForWeight * _numParallelism);
+			_weightDeltaParallel = std::make_shared<GPGPU::HostParameter>();
+			*_weightDeltaParallel = _computer->createArrayInput<float>("weightDelta", _paddedNumElementsPerGroupForWeight * _numParallelism);
 
 			// weight index checkpoints per layer
 			_weightLayerStart = std::make_shared<GPGPU::HostParameter>();
 			*_weightLayerStart = _computer->createArrayInput<int>("weightLayerStart", layerStartWeight.size());
 
 			// biases
-			_bias = std::make_shared<GPGPU::HostParameter>();
-			*_bias = _computer->createArrayInput<float>("bias", _nBias);
-			_biasDelta = std::make_shared<GPGPU::HostParameter>();
-			*_biasDelta = _computer->createArrayInput<float>("biasDelta", _nBias);
+			_biasParallel = std::make_shared<GPGPU::HostParameter>();
+			*_biasParallel = _computer->createArrayInput<float>("bias", _paddedNumElementsPerGroupForBias * _numParallelism);
+			_biasDeltaParallel = std::make_shared<GPGPU::HostParameter>();
+			*_biasDeltaParallel = _computer->createArrayInput<float>("biasDelta", _paddedNumElementsPerGroupForBias * _numParallelism);
 
 			// bias index checkpoints per layer
 			_biasLayerStart = std::make_shared<GPGPU::HostParameter>();
@@ -91,15 +102,31 @@ namespace GPGPU
 			std::mt19937 rng{ rd() };
 
 			std::uniform_real_distribution<float> gen(-1.0f, 1.0f);
-			for (int i = 0; i < _nWeight; i++)
+			for (int i = 0; i < _paddedNumElementsPerGroupForWeight * _numParallelism; i++)
 			{
-				_weight->access<float>(i) = gen(rng);
-				_weightDelta->access<float>(i) = 0.0f;
+				if (i < _paddedNumElementsPerGroupForWeight)
+				{
+					_weightParallel->access<float>(i) = gen(rng);
+				}
+				else
+				{
+					_weightParallel->access<float>(i) = _weightParallel->access<float>(i % _paddedNumElementsPerGroupForWeight);
+				}
+				_weightDeltaParallel->access<float>(i) = 0.0f;
 			}
-			for (int i = 0; i < _nBias; i++)
+
+
+			for (int i = 0; i < _paddedNumElementsPerGroupForBias * _numParallelism; i++)
 			{
-				_bias->access<float>(i) = gen(rng);
-				_biasDelta->access<float>(i) = 0.0f;
+				if (i < _paddedNumElementsPerGroupForBias)
+				{
+					_biasParallel->access<float>(i) = gen(rng);
+				}
+				else
+				{
+					_biasParallel->access<float>(i) = _biasParallel->access<float>(i % _paddedNumElementsPerGroupForBias);
+				}
+				_biasDeltaParallel->access<float>(i) = 0.0f;
 			}
 
 			for (int i = 0; i < layerStartWeight.size(); i++)
@@ -137,35 +164,50 @@ namespace GPGPU
 			_settings->access<int>(0) = trainingInputs.size();
 			_settings->access<int>(1) = numNeuronsInLayers.size();
 
-			_neuronInputValues = std::make_shared<GPGPU::HostParameter>();
-			*_neuronInputValues = _computer->createArrayInput<float>("neuronInputValue", _nBias);
-			_neuronOutputValues = std::make_shared<GPGPU::HostParameter>();
-			*_neuronOutputValues = _computer->createArrayInput<float>("neuronOutputValue", _nBias);
+			_neuronInputValuesParallel = std::make_shared<GPGPU::HostParameter>();
+			*_neuronInputValuesParallel = _computer->createArrayInput<float>("neuronInputValue", _paddedNumElementsPerGroupForBias * _numParallelism);
+			_neuronOutputValuesParallel = std::make_shared<GPGPU::HostParameter>();
+			*_neuronOutputValuesParallel = _computer->createArrayInput<float>("neuronOutputValue", _paddedNumElementsPerGroupForBias * _numParallelism);
 			_neuronErrorValues = std::make_shared<GPGPU::HostParameter>();
-			*_neuronErrorValues = _computer->createArrayOutput<char>("neuronErrorValue", 256 * NUM_PARALLELISM);
+			*_neuronErrorValues = _computer->createArrayOutput<char>("neuronErrorValue", 256 * _numParallelism);
 			_networkErrorValues = std::make_shared<GPGPU::HostParameter>();
-			*_networkErrorValues = _computer->createArrayOutput<float>("networkErrorValue", 256 * NUM_PARALLELISM);
+			*_networkErrorValues = _computer->createArrayOutput<float>("networkErrorValue", 256 * _numParallelism);
 
 
 
 			_kernelParameters = std::make_shared<GPGPU::HostParameter>();
 
 
-			for (int i = 0; i < _nBias; i++)
+			for (int i = 0; i < _paddedNumElementsPerGroupForBias * _numParallelism; i++)
 			{
-				_neuronInputValues->access<float>(i) = 0.0f;
-				_neuronOutputValues->access<float>(i) = 0.0f;
-				_neuronErrorValues->access<char>(i) = 0;
+				_neuronInputValuesParallel->access<float>(i) = 0.0f;
+				_neuronOutputValuesParallel->access<float>(i) = 0.0f;
 			}
+			for (int i = 0; i < 256 * _numParallelism; i++)
+				_neuronErrorValues->access<char>(i) = 0;
 
-
-			*_kernelParameters = _trainingInput->next(*_trainingOutput).next(*_weight).
-				next(*_bias).next(*_weightLayerStart).next(*_biasLayerStart).
-				next(*_weightDelta).next(*_biasDelta).next(*_topology).
-				next(*_settings).next(*_neuronInputValues).next(*_neuronOutputValues).
+			_settings->access<int>(5) = _nWeight + _nBias;
+			_settings->access<int>(6) = _paddedNumElementsPerGroupForWeight;
+			_settings->access<int>(7) = _paddedNumElementsPerGroupForBias;
+			*_kernelParameters = _trainingInput->next(*_trainingOutput).next(*_weightParallel).
+				next(*_biasParallel).next(*_weightLayerStart).next(*_biasLayerStart).
+				next(*_weightDeltaParallel).next(*_biasDeltaParallel).next(*_topology).
+				next(*_settings).next(*_neuronInputValuesParallel).next(*_neuronOutputValuesParallel).
 				next(*_neuronErrorValues).next(*_networkErrorValues).next(*_settingsFloat);
 
-			_computer->compile(R"(
+			std::string wgt = std::string("#define workGroupThreads ") + std::to_string(256);
+			wgt = std::string(R"(
+			)") + wgt + std::string(R"(
+			)");
+			std::string wgt2 = std::string("#define numWeight ") + std::to_string(_nWeight);
+			wgt2 = std::string(R"(
+			)") + wgt2 + std::string(R"(
+			)");
+			std::string wgt3 = std::string("#define numBias ") + std::to_string(_nBias);
+			wgt3 = std::string(R"(
+			)") + wgt3 + std::string(R"(
+			)");
+			_computer->compile(wgt + wgt2 + wgt3 + std::string(R"(
 
 				void kernel training(
 					global float * trainingInput,
@@ -185,30 +227,44 @@ namespace GPGPU
 					global float * settingsFloat
 				)
 				{
+					local float errors[workGroupThreads];
 					const int id = get_global_id(0);
-	
+					const int groupId = id/workGroupThreads;				
+					const int localId = id % workGroupThreads;
+			
+
 					const float trainingSpeed = settingsFloat[0];
-					if(id>0) 
-						return;
 					const int numInputs = topology[0];
 					const int numLayers = settings[1];
 					const int numOutputs= topology[numLayers-1];
 					const int numTrainingData = settings[0];
+
+					/*
 					const bool weightToUpdate = (settings[2]==0?true:false);
 					const int weightIndexToUpdate = settings[3];
 					const int biasIndexToUpdate = settings[4];
-		
+					*/
+					const bool weightToUpdate = (groupId<numWeight?true:false);
+					const int weightIndexToUpdate = groupId;
+					const int biasIndexToUpdate = groupId - numWeight;
+
+
+					const int numParameters = settings[5];
+					const int numParametersPaddedWeight = settings[6];
+					const int numParametersPaddedBias = settings[7];
+					const int offsetGroupWeight = numParametersPaddedWeight * groupId;
+					const int offsetGroupBias = numParametersPaddedBias * groupId;
 					float errorLeft = 0.0f;
 					float errorRight = 0.0f;
 					
 					float originalParameter = 0.0f;
 					if(weightToUpdate)
 					{
-						originalParameter = weight[weightIndexToUpdate];
+						originalParameter = weight[offsetGroupWeight+weightIndexToUpdate];
 					}
 					else
 					{
-						originalParameter = bias[biasIndexToUpdate];
+						originalParameter = bias[offsetGroupBias+biasIndexToUpdate];
 					}
 
 						
@@ -219,28 +275,41 @@ namespace GPGPU
 						{
 							float dirVal = dir * trainingSpeed;
 
-					
-							if(weightToUpdate)
+							if(localId == 0)
 							{
-								weight[weightIndexToUpdate] = originalParameter+dirVal;
+								if(weightToUpdate)
+								{								
+									weight[offsetGroupWeight+weightIndexToUpdate] = originalParameter+dirVal;
+								}
+								else
+								{
+									bias[offsetGroupBias+biasIndexToUpdate] = originalParameter+dirVal;
+								}
 							}
-							else
-							{
-								bias[biasIndexToUpdate] = originalParameter+dirVal;
-							}
+							barrier(CLK_GLOBAL_MEM_FENCE);
+
 
 							// FEED FORWARD
 							// put inputs into first layer input & calculate output
-							for(int neu=0;neu<numInputs;neu++)
-							{
-								int biasIndex = neu;
-								int weightIndex = neu;
-								neuronInputValue[biasIndex]=trainingInput[i*numInputs + neu];
-								neuronOutputValue[biasIndex]=tanh(
-									weight[weightIndex]*neuronInputValue[biasIndex]+bias[biasIndex]
-								);
-							}
 
+							{
+								const int numLoopIter = (numInputs / workGroupThreads) + 1;     
+								for(int iGPGPU=0;iGPGPU<numLoopIter;iGPGPU++)                          
+								{                                                       
+									const int loopId = localId + workGroupThreads * iGPGPU; 
+									if(loopId < numInputs)                                 
+									{                   
+									                               
+										int biasIndex = loopId;
+										int weightIndex = loopId;
+										neuronInputValue[offsetGroupBias+biasIndex]=trainingInput[i*numInputs + loopId];
+										neuronOutputValue[offsetGroupBias+biasIndex]=tanh(
+											weight[offsetGroupWeight+weightIndex]*neuronInputValue[offsetGroupBias+biasIndex]+bias[offsetGroupBias+biasIndex]
+										);                                        
+									}                                                   
+								}                                                       
+							}
+							barrier(CLK_GLOBAL_MEM_FENCE);
 			
 
 							// input --> weighted sum --> activation --> output
@@ -248,58 +317,87 @@ namespace GPGPU
 							{
 								int numPreviousNeurons = topology[layer-1];
 								int numCurrentNeurons = topology[layer];
-								for(int neu=0;neu<numCurrentNeurons;neu++)
-								{
-									int biasIndex = biasLayerStart[layer] + neu;
+
+								const int numLoopIter = (numCurrentNeurons / workGroupThreads) + 1;     
+								for(int iGPGPU=0;iGPGPU<numLoopIter;iGPGPU++)                          
+								{                                                       
+									const int loopId = localId + workGroupThreads * iGPGPU; 
+									if(loopId < numCurrentNeurons)                                 
+									{                   
+										int biasIndex = biasLayerStart[layer] + loopId;
 									
 									
-									float accumulator = 0.0f;
-									for(int pNeu=0;pNeu<numPreviousNeurons;pNeu++)
-									{
-										int weightIndex = weightLayerStart[layer]+neu*numPreviousNeurons+pNeu;
-										int biasIndexPrevious = biasLayerStart[layer-1] + pNeu;
-										accumulator += neuronOutputValue[biasIndexPrevious]*weight[weightIndex];
-									}
-									neuronInputValue[biasIndex]=accumulator;
-									neuronOutputValue[biasIndex]=tanh(
-										neuronInputValue[biasIndex]+bias[biasIndex]
-									);
-								}
-							}
-	
-							float error = 0.0f;
-							for(int out=0;out<numOutputs;out++)
-							{
-								int biasIndex = biasLayerStart[numLayers-1] + out;
-								float val = neuronOutputValue[biasIndex]; 
-								float output = trainingOutput[i*numOutputs + out];
-								float err = (val-output);
-								err *= err;
-								error += err;
+										float accumulator = 0.0f;
+										for(int pNeu=0;pNeu<numPreviousNeurons;pNeu++)
+										{
+											int weightIndex = weightLayerStart[layer]+loopId*numPreviousNeurons+pNeu;
+											int biasIndexPrevious = biasLayerStart[layer-1] + pNeu;
+											accumulator += neuronOutputValue[offsetGroupBias+biasIndexPrevious]*weight[offsetGroupWeight+weightIndex];
+										}
+										neuronInputValue[offsetGroupBias+biasIndex]=accumulator;
+										neuronOutputValue[offsetGroupBias+biasIndex]=tanh(
+											neuronInputValue[offsetGroupBias+biasIndex]+bias[offsetGroupBias+biasIndex]
+										);																	                               
+										                                        
+									}                                                   
+								}                                                       
+								barrier(CLK_GLOBAL_MEM_FENCE);
 							}
 
-							if(dir == -1)
-								errorLeft += error;
-							else
-								errorRight += error;
+
+							float error = 0.0f;
+
+							{
+								const int numLoopIter = (numOutputs / workGroupThreads) + 1;     
+								for(int iGPGPU=0;iGPGPU<numLoopIter;iGPGPU++)                          
+								{                                                       
+									const int loopId = localId + workGroupThreads * iGPGPU; 
+									if(loopId < numOutputs)                                 
+									{                   
+										int biasIndex = biasLayerStart[numLayers-1] + loopId;
+										float val = neuronOutputValue[offsetGroupBias+biasIndex]; 
+										float output = trainingOutput[i*numOutputs + loopId];
+										float err = (val-output);
+										err *= err;
+										error += err;																				                                        
+									}                                                   
+								}                                                       
+								barrier(CLK_GLOBAL_MEM_FENCE);
+							}
+							errors[localId] = error;
+							barrier(CLK_LOCAL_MEM_FENCE);
+			                for(unsigned int i=workGroupThreads/2;i>=1;i>>=1)
+							{
+								unsigned int reduceId = i + localId;
+								if(localId<i)
+									errors[localId] += errors[reduceId]; 
+								barrier(CLK_LOCAL_MEM_FENCE);
+							}
+
+							if(localId == 0)
+							{
+								if(dir == -1)
+									errorLeft += errors[0];
+								else
+									errorRight += errors[0];
+							}
 						}
 
 					}
 									
-					const int groupId = id/256;				
-					const int localId = id % 256;
+
 					if(localId == 0)
 					{
-						neuronErrorValue[groupId*256]=(errorLeft<errorRight?-1:1);
-						networkErrorValue[groupId*256]=(errorLeft<errorRight?errorLeft:errorRight);
+						neuronErrorValue[groupId*workGroupThreads]=(errorLeft<errorRight?-1:1);
+						networkErrorValue[groupId*workGroupThreads]=(errorLeft<errorRight?errorLeft:errorRight);
 					}
 					
 				}
-			)", "training");
+			)"), "training");
 		}
 
 		// dampening: less than 1 greater than 0
-		void Train(float trainingSpeed, int epochs, bool dampenTrainingSpeed, float dampening = 0.001f)
+		void Train(float trainingSpeed, int epochs, bool dampenTrainingSpeed, float dampening = 0.001f, bool profileEpoch = false)
 		{
 			int weightCtr = 0;
 			int biasCtr = 0;
@@ -321,9 +419,14 @@ namespace GPGPU
 				}
 
 
-				_computer->compute(*_kernelParameters, "training", 0, 256 * NUM_PARALLELISM, 256);
-
-				if (i % 1000 == 0)
+				size_t t;
+				{
+					GPGPU::Bench benchmark(&t);
+					_computer->compute(*_kernelParameters, "training", 0, 256 * _numParallelism, 256);
+				}
+				if (profileEpoch)
+					std::cout << "epoch: " << t / 1000000000.0f << "s" << std::endl;
+				if (i % 10 == 0)
 				{
 					std::cout <<
 						(int)_neuronErrorValues->access<char>(0) << ": " <<
@@ -340,29 +443,74 @@ namespace GPGPU
 							std::cout << _bias->access<float>(i) << "!!!" << std::endl;
 							*/
 				}
-				if (_neuronErrorValues->access<char>(0) == -1)
+
+				for (int k = 0; k < _numParallelism; k++)
 				{
-					if (weightToUpdate)
+					if (k < _nWeight)
 					{
-						_weight->access<float>((weightCtr - 1) % _nWeight) -= trainingSpeed;
+						if (_neuronErrorValues->access<char>(k * 256) == -1)
+						{
+							_weightParallel->access<float>(k) -= trainingSpeed;
+						}
+						else // 1
+						{
+							_weightParallel->access<float>(k) += trainingSpeed;
+						}
+					}
+					else // bias
+					{
+						if (_neuronErrorValues->access<char>(k * 256) == -1)
+						{
+							_biasParallel->access<float>(k - _nWeight) -= trainingSpeed;
+						}
+						else // 1
+						{
+							_biasParallel->access<float>(k - _nWeight) += trainingSpeed;
+						}
+					}
+
+					/*
+					if (_neuronErrorValues->access<char>(0) == -1)
+					{
+						if (weightToUpdate)
+						{
+							_weightParallel->access<float>((weightCtr - 1) % _nWeight) -= trainingSpeed;
+						}
+						else
+						{
+							_biasParallel->access<float>((biasCtr - 1) % _nBias) -= trainingSpeed;
+						}
 					}
 					else
 					{
-						_bias->access<float>((biasCtr - 1) % _nBias) -= trainingSpeed;
+						if (weightToUpdate)
+						{
+							_weightParallel->access<float>((weightCtr - 1) % _nWeight) += trainingSpeed;
+						}
+						else
+						{
+							_biasParallel->access<float>((biasCtr - 1) % _nBias) += trainingSpeed;
+						}
 					}
-				}
-				else
-				{
-					if (weightToUpdate)
-					{
-						_weight->access<float>((weightCtr - 1) % _nWeight) += trainingSpeed;
-					}
-					else
-					{
-						_bias->access<float>((biasCtr - 1) % _nBias) += trainingSpeed;
-					}
+					*/
 				}
 
+				for (int k = 1; k < _numParallelism; k++)
+				{
+					for (int m = 0; m < _paddedNumElementsPerGroupForBias; m++)
+					{
+						_biasParallel->access<float>(m + k * _paddedNumElementsPerGroupForBias)
+							=
+							_biasParallel->access<float>(m);
+					}
+
+					for (int m = 0; m < _paddedNumElementsPerGroupForWeight; m++)
+					{
+						_weightParallel->access<float>(m + k * _paddedNumElementsPerGroupForWeight)
+							=
+							_weightParallel->access<float>(m);
+					}
+				}
 			}
 		}
 
@@ -381,9 +529,9 @@ namespace GPGPU
 			{
 				int biasIndex = neu;
 				int weightIndex = neu;
-				_neuronInputValues->access<float>(biasIndex) = inputs[neu];
-				_neuronOutputValues->access<float>(biasIndex) = std::tanh(
-					_weight->access<float>(weightIndex) * _neuronInputValues->access<float>(biasIndex) + _bias->access<float>(biasIndex)
+				_neuronInputValuesParallel->access<float>(biasIndex) = inputs[neu];
+				_neuronOutputValuesParallel->access<float>(biasIndex) = std::tanh(
+					_weightParallel->access<float>(weightIndex) * _neuronInputValuesParallel->access<float>(biasIndex) + _biasParallel->access<float>(biasIndex)
 				);
 			}
 
@@ -404,15 +552,15 @@ namespace GPGPU
 					{
 						int weightIndex = _weightLayerStart->access<int>(layer) + neu * numPreviousNeurons + pNeu;
 						int biasIndexPrevious = _biasLayerStart->access<int>(layer - 1) + pNeu;
-						accumulator += _neuronOutputValues->access<float>(biasIndexPrevious) * _weight->access<float>(weightIndex);
+						accumulator += _neuronOutputValuesParallel->access<float>(biasIndexPrevious) * _weightParallel->access<float>(weightIndex);
 					}
-					_neuronInputValues->access<float>(biasIndex) = accumulator;
-					_neuronOutputValues->access<float>(biasIndex) = std::tanh(
-						_neuronInputValues->access<float>(biasIndex) + _bias->access<float>(biasIndex)
+					_neuronInputValuesParallel->access<float>(biasIndex) = accumulator;
+					_neuronOutputValuesParallel->access<float>(biasIndex) = std::tanh(
+						_neuronInputValuesParallel->access<float>(biasIndex) + _biasParallel->access<float>(biasIndex)
 					);
 					if (layer == _nLayers - 1)
 					{
-						outputs[neu] = _neuronOutputValues->access<float>(biasIndex);
+						outputs[neu] = _neuronOutputValuesParallel->access<float>(biasIndex);
 					}
 				}
 			}
@@ -420,6 +568,7 @@ namespace GPGPU
 			return outputs;
 		}
 	private:
+		int _numParallelism;
 		int _nWeight;
 		int _nBias;
 		int _nOutputs;
@@ -432,18 +581,20 @@ namespace GPGPU
 		std::shared_ptr<GPGPU::HostParameter> _topology;
 		std::shared_ptr<GPGPU::HostParameter> _trainingInput;
 		std::shared_ptr<GPGPU::HostParameter> _trainingOutput;
+
+		// parallel-postfix means N copies will be made for computing all parameters at once
 		// memory layout for weights is packed without any padding
-		std::shared_ptr<GPGPU::HostParameter> _weight;
-		std::shared_ptr<GPGPU::HostParameter> _weightDelta;
+		std::shared_ptr<GPGPU::HostParameter> _weightParallel;
+		std::shared_ptr<GPGPU::HostParameter> _weightDeltaParallel;
 		std::shared_ptr<GPGPU::HostParameter> _weightLayerStart;
 		// similar to weight except only 1 bias per neuron		
-		std::shared_ptr<GPGPU::HostParameter> _bias;
-		std::shared_ptr<GPGPU::HostParameter> _biasDelta;
+		std::shared_ptr<GPGPU::HostParameter> _biasParallel;
+		std::shared_ptr<GPGPU::HostParameter> _biasDeltaParallel;
 		std::shared_ptr<GPGPU::HostParameter> _biasLayerStart;
 
 		// input/outputs of each neuron
-		std::shared_ptr<GPGPU::HostParameter> _neuronInputValues;
-		std::shared_ptr<GPGPU::HostParameter> _neuronOutputValues;
+		std::shared_ptr<GPGPU::HostParameter> _neuronInputValuesParallel;
+		std::shared_ptr<GPGPU::HostParameter> _neuronOutputValuesParallel;
 
 		// error of neuron
 		std::shared_ptr<GPGPU::HostParameter> _neuronErrorValues;
